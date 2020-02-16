@@ -92,9 +92,14 @@ function commentAllTypes(fileNames, options) {
         var symbol = checker.getSymbolAtLocation(node.name);
         if (symbol) {
             if (node.type) {
-                edits.push({pos: node.type.pos, end: node.type.end});
+                var pos;
+                if (node.questionToken) {
+                    pos = node.type.pos - 1;
+                } else {
+                    pos = node.type.pos;
+                }
+                edits.push({pos: pos, end: node.type.end});
             }
-
         }
         ts.forEachChild(node, visit);
     }
