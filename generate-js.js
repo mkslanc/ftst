@@ -89,17 +89,17 @@ function commentAllTypes(fileNames, options) {
     }
 
     function visit(node) {
-        var symbol = checker.getSymbolAtLocation(node.name);
-        if (symbol) {
-            if (node.type) {
-                var pos;
-                if (node.questionToken) {
-                    pos = node.type.pos - 1;
-                } else {
-                    pos = node.type.pos;
-                }
-                edits.push({pos: pos, end: node.type.end});
+        if (node.type) {
+            var pos;
+            if (ts.isAsExpression(node) || (ts.isParameter(node) && node.questionToken)) {
+                pos = node.type.pos - 2;
+            } else {
+                pos = node.type.pos - 1;
             }
+            edits.push({pos: pos, end: node.type.end});
+        }
+        if (node.typeParameters) {
+            edits.push({pos: node.typeParameters.pos - 1, end: node.typeParameters.end + 1});
         }
         ts.forEachChild(node, visit);
     }
@@ -108,12 +108,21 @@ function commentAllTypes(fileNames, options) {
 function applyEditsToFile(filename) {
     var start = fs.readFileSync(filename, "utf8");
     var end = "";
-    edits
-        .sort((a, b) => b.end - a.end)
-        .forEach(edit => {
-            end = "/*" + start.slice(edit.pos - 1, edit.end) + "*/" + start.slice(edit.end) + end;
-            start = start.slice(0, edit.pos - 1)
-        });
+    edits.sort((a, b) => b.end - a.end);
+
+    for (var i = 1; i < edits.length; i++) {
+        for (var j = i - 1; j > 0; j--) {
+            if ((edits[j + 1].pos >= edits[j].pos && edits[j + 1].end <= edits[j].end)) {
+                edits.splice(j + 1, 1);
+                i--;
+            }
+        }
+    }
+
+    edits.forEach(edit => {
+        end = "/*" + start.slice(edit.pos, edit.end) + "*/" + start.slice(edit.end) + end;
+        start = start.slice(0, edit.pos)
+    });
     end = start + end;
     fs.writeFileSync(filename, end);
     return end;
