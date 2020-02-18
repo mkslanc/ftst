@@ -89,27 +89,33 @@ function commentAllTypes(fileNames, options) {
     }
 
     function visit(node) {
-        if (ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node)) {
-            //TODO: something with doc comments and block comments
-            edits.push({pos: node.pos, end: node.end});
-        } else {
-            if (node.type) {
-                var pos, end;
-                if (ts.isAsExpression(node) || (ts.isParameter(node) && node.questionToken)) {
-                    pos = node.type.pos - 2;
-                } else {
-                    pos = node.type.pos - 1;
+        switch (true) {
+            case ts.isTypeAliasDeclaration(node):
+            case ts.isInterfaceDeclaration(node):
+            case (ts.isFunctionDeclaration(node) && !node.body):
+                //TODO: maybe i will find better way to exclude overloads
+                //TODO: something with doc comments and block comments
+                edits.push({pos: node.pos, end: node.end});
+                break;
+            default:
+                if (node.type) {
+                    var pos, end;
+                    if (ts.isAsExpression(node) || (ts.isParameter(node) && node.questionToken)) {
+                        pos = node.type.pos - 2;
+                    } else {
+                        pos = node.type.pos - 1;
+                    }
+                    if (ts.isTypeAssertion(node)) {
+                        end = node.type.end + 1;
+                    } else {
+                        end = node.type.end;
+                    }
+                    edits.push({pos: pos, end: end});
                 }
-                if (ts.isTypeAssertion(node)) {
-                    end = node.type.end + 1;
-                } else {
-                    end = node.type.end;
+                if (node.typeParameters) {
+                    edits.push({pos: node.typeParameters.pos - 1, end: node.typeParameters.end + 1});
                 }
-                edits.push({pos: pos, end: end});
-            }
-            if (node.typeParameters) {
-                edits.push({pos: node.typeParameters.pos - 1, end: node.typeParameters.end + 1});
-            }
+                break;
         }
         ts.forEachChild(node, visit);
     }
