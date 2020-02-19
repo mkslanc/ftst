@@ -93,9 +93,10 @@ function commentAllTypes(fileNames, options) {
             case ts.isTypeAliasDeclaration(node):
             case ts.isInterfaceDeclaration(node):
             case (ts.isFunctionDeclaration(node) && !node.body):
+            case (ts.isMethodDeclaration(node) && !node.body):
             case (node.kind && node.kind == ts.SyntaxKind.PrivateKeyword):
             case (node.kind && node.kind == ts.SyntaxKind.PublicKeyword):
-                //TODO: maybe i will find better way to exclude overloads
+                //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 edits.push({pos: node.pos, end: node.end});
                 break;
             default:
