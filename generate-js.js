@@ -93,8 +93,9 @@ function commentAllTypes(fileNames, options) {
             case ts.isTypeAliasDeclaration(node):
             case ts.isInterfaceDeclaration(node):
             case (ts.isFunctionDeclaration(node) && !node.body):
+            case (node.kind && node.kind == ts.SyntaxKind.PrivateKeyword):
+            case (node.kind && node.kind == ts.SyntaxKind.PublicKeyword):
                 //TODO: maybe i will find better way to exclude overloads
-                //TODO: something with doc comments and block comments
                 edits.push({pos: node.pos, end: node.end});
                 break;
             default:
@@ -136,7 +137,8 @@ function applyEditsToFile(filename) {
     }
 
     edits.forEach(edit => {
-        end = "/*" + start.slice(edit.pos, edit.end) + "*/" + start.slice(edit.end) + end;
+
+        end = "/*" + start.slice(edit.pos, edit.end).replace("*/","  ") + "*/" + start.slice(edit.end) + end;
         start = start.slice(0, edit.pos)
     });
     end = start + end;
