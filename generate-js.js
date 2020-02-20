@@ -102,6 +102,47 @@ function commentAllTypes(fileNames, options) {
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 edits.push({pos: node.pos, end: node.end});
                 break;
+            case (node.body && ts.isModuleDeclaration(node)):
+                //TODO: maybe need some checks for crazy stuff like abstract namespace Example etc
+                let moduleName = node.name.getText();
+                let textToPaste = (node.modifiers && node.modifiers.length > 0 ) ?
+                    "export var " + moduleName + "; (function ("+ moduleName +")":
+                    "var " + moduleName + "; (function ("+ moduleName +")";
+                edits.push({pos: node.pos, end: node.body.pos, afterEnd: textToPaste});
+                textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}))";
+                edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+                break;
+            case (ts.isFunctionDeclaration(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
+            case (ts.isVariableStatement(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
+                if (node.modifiers && node.modifiers.length > 0) {
+                    var check = node.modifiers.some(function (el) {
+                        if (el.kind == ts.SyntaxKind.ExportKeyword) {
+                            edits.push({pos: el.pos, end: el.end});
+                            return true
+                        }
+                    });
+                    if (check) {
+                        let moduleName = node.parent.parent.name.getText();
+                        if (ts.isFunctionDeclaration(node)) {
+                            let constructionName = node.name.getText();
+                            let textToPaste = moduleName + "." + constructionName + " = " + moduleName;
+                            edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+                        } else {
+                            if (node.declarationList && node.declarationList.declarations) {
+                                var i = 0;
+                                while (i < node.declarationList.declarations.length) {
+                                    if (node.declarationList.declarations[i].pos >= node.pos && node.declarationList.declarations[i].pos <= node.end)
+                                        break;
+                                    i++;
+                                }
+                                let stopCommentPos = node.declarationList.declarations[i].pos +
+                                    node.declarationList.declarations[i].getLeadingTriviaWidth();
+                                let textToPaste = moduleName + ".";
+                                edits.push({pos: node.pos, end: stopCommentPos, afterEnd: textToPaste});
+                            }
+                        }
+                    }
+                }
             default:
                 if (node.type) {
                     var pos, end;
@@ -133,7 +174,7 @@ function applyEditsToFile(filename) {
 
     for (var i = 1; i < edits.length; i++) {
         for (var j = i - 1; j > 0; j--) {
-            if ((edits[j + 1].pos >= edits[j].pos && edits[j + 1].end <= edits[j].end)) {
+            if (edits[j + 1].pos != edits[j + 1].end && edits[j + 1].pos >= edits[j].pos && edits[j + 1].end <= edits[j].end) {
                 edits.splice(j + 1, 1);
                 i--;
             }
@@ -141,8 +182,12 @@ function applyEditsToFile(filename) {
     }
 
     edits.forEach(edit => {
-
-        end = "/*" + start.slice(edit.pos, edit.end).replace("*/","  ") + "*/" + start.slice(edit.end) + end;
+        let afterEnd = (edit.afterEnd)? edit.afterEnd : "";
+        if (edit.pos === edit.end) {
+            end = afterEnd + start.slice(edit.end) + end;
+        } else {
+            end = "/*" + start.slice(edit.pos, edit.end).replace("*/", "  ") + "*/" + afterEnd + start.slice(edit.end) + end;
+        }
         start = start.slice(0, edit.pos)
     });
     end = start + end;
