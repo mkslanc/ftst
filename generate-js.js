@@ -105,12 +105,21 @@ function commentAllTypes(fileNames, options) {
             case (node.body && ts.isModuleDeclaration(node)):
                 //TODO: maybe need some checks for crazy stuff like abstract namespace Example etc
                 let moduleName = node.name.getText();
-                let textToPaste = (node.modifiers && node.modifiers.length > 0 ) ?
-                    "export var " + moduleName + "; (function ("+ moduleName +")":
-                    "var " + moduleName + "; (function ("+ moduleName +")";
-                edits.push({pos: node.pos, end: node.body.pos, afterEnd: textToPaste});
-                textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}))";
-                edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+
+                if (node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)) {
+                    let textToPaste = "let " + moduleName + "; (function ("+ moduleName +")";
+                    let parentModuleName = node.parent.parent.name.getText();
+                    edits.push({pos: node.pos, end: node.body.pos, afterEnd: textToPaste});
+                    textToPaste = ")(" + moduleName + " = "+ parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}))";
+                    edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+                } else {
+                    let textToPaste = (node.modifiers && node.modifiers.length > 0 ) ?
+                        "export var " + moduleName + "; (function ("+ moduleName +")":
+                        "var " + moduleName + "; (function ("+ moduleName +")";
+                    edits.push({pos: node.pos, end: node.body.pos, afterEnd: textToPaste});
+                    textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}))";
+                    edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+                }
                 break;
             case (ts.isFunctionDeclaration(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
             case (ts.isVariableStatement(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
@@ -125,7 +134,7 @@ function commentAllTypes(fileNames, options) {
                         let moduleName = node.parent.parent.name.getText();
                         if (ts.isFunctionDeclaration(node)) {
                             let constructionName = node.name.getText();
-                            let textToPaste = moduleName + "." + constructionName + " = " + moduleName;
+                            let textToPaste = moduleName + "." + constructionName + " = " + constructionName;
                             edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                         } else {
                             if (node.declarationList && node.declarationList.declarations) {
