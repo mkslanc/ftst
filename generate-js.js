@@ -100,7 +100,7 @@ function commentAllTypes(fileNames, options) {
             case (node.kind && node.kind == ts.SyntaxKind.ReadonlyKeyword):
             case (node.kind && node.kind == ts.SyntaxKind.AbstractKeyword):
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
-                edits.push({pos: node.pos, end: node.end});
+                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                 break;
             case (node.body && ts.isModuleDeclaration(node)):
                 //TODO: maybe need some checks for crazy stuff like abstract namespace Example etc
@@ -109,14 +109,14 @@ function commentAllTypes(fileNames, options) {
                 if (node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)) {
                     let textToPaste = "let " + moduleName + "; (function ("+ moduleName +")";
                     let parentModuleName = node.parent.parent.name.getText();
-                    edits.push({pos: node.pos, end: node.body.pos, afterEnd: textToPaste});
+                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.body.pos, afterEnd: textToPaste});
                     textToPaste = ")(" + moduleName + " = "+ parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
                     edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 } else {
                     let textToPaste = (node.modifiers && node.modifiers.length > 0 ) ?
                         "export var " + moduleName + "; (function ("+ moduleName +")":
                         "var " + moduleName + "; (function ("+ moduleName +")";
-                    edits.push({pos: node.pos, end: node.body.pos, afterEnd: textToPaste});
+                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.body.pos, afterEnd: textToPaste});
                     textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
                     edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 }
@@ -126,7 +126,7 @@ function commentAllTypes(fileNames, options) {
                 if (node.modifiers && node.modifiers.length > 0) {
                     var check = node.modifiers.some(function (el) {
                         if (el.kind == ts.SyntaxKind.ExportKeyword) {
-                            edits.push({pos: el.pos, end: el.end});
+                            edits.push({pos: el.pos + el.getLeadingTriviaWidth(), end: el.end});
                             return true
                         }
                     });
@@ -147,7 +147,7 @@ function commentAllTypes(fileNames, options) {
                                 let stopCommentPos = node.declarationList.declarations[i].pos +
                                     node.declarationList.declarations[i].getLeadingTriviaWidth();
                                 let textToPaste = moduleName + ".";
-                                edits.push({pos: node.pos, end: stopCommentPos, afterEnd: textToPaste});
+                                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: stopCommentPos, afterEnd: textToPaste});
                             }
                         }
                     }
