@@ -195,7 +195,7 @@ function applyEditsToFile(filename) {
         if (edit.pos === edit.end) {
             end = afterEnd + start.slice(edit.end) + end;
         } else {
-            end = "/*" + start.slice(edit.pos, edit.end).replace("*/", "  ") + "*/" + afterEnd + start.slice(edit.end) + end;
+            end = "/*" + start.slice(edit.pos, edit.end).replace(/\*\//g, "  ") + "*/" + afterEnd + start.slice(edit.end) + end;
         }
         start = start.slice(0, edit.pos)
     });
