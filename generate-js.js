@@ -45,7 +45,7 @@ function createCompilerHost(options) {
     function getSourceFile(fileName, languageVersion, onError) {
         var sourceText = ts.sys.readFile(fileName);
         return sourceText !== undefined
-            ? ts.createSourceFile(fileName, sourceText, languageVersion, false, ts.ScriptKind.TS)
+            ? ts.createSourceFile(fileName, sourceText.replace(/im(port.+)/g,"//$1"), languageVersion, false, ts.ScriptKind.TS)
             : undefined;
     }
 }
@@ -110,14 +110,14 @@ function commentAllTypes(fileNames, options) {
                     let textToPaste = "let " + moduleName + "; (function ("+ moduleName +")";
                     let parentModuleName = node.parent.parent.name.getText();
                     edits.push({pos: node.pos, end: node.body.pos, afterEnd: textToPaste});
-                    textToPaste = ")(" + moduleName + " = "+ parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}))";
+                    textToPaste = ")(" + moduleName + " = "+ parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
                     edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 } else {
                     let textToPaste = (node.modifiers && node.modifiers.length > 0 ) ?
                         "export var " + moduleName + "; (function ("+ moduleName +")":
                         "var " + moduleName + "; (function ("+ moduleName +")";
                     edits.push({pos: node.pos, end: node.body.pos, afterEnd: textToPaste});
-                    textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}))";
+                    textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
                     edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 }
                 break;
@@ -134,7 +134,7 @@ function commentAllTypes(fileNames, options) {
                         let moduleName = node.parent.parent.name.getText();
                         if (ts.isFunctionDeclaration(node)) {
                             let constructionName = node.name.getText();
-                            let textToPaste = moduleName + "." + constructionName + " = " + constructionName;
+                            let textToPaste = moduleName + "." + constructionName + " = " + constructionName + ";";
                             edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                         } else {
                             if (node.declarationList && node.declarationList.declarations) {
@@ -205,5 +205,5 @@ function applyEditsToFile(filename) {
 }
 
 generateJavaScriptFile(process.argv.slice(2), {
-    target: ts.ScriptTarget.ES5, module: ts.ModuleKind.CommonJS, allowJs: false, lib: [], types: []
+    target: ts.ScriptTarget.ES5, module: "None", allowJs: false, lib: [], types: [], noEmit: true
 });
