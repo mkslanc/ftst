@@ -45,7 +45,7 @@ function createCompilerHost(options) {
     function getSourceFile(fileName, languageVersion, onError) {
         var sourceText = ts.sys.readFile(fileName);
         return sourceText !== undefined
-            ? ts.createSourceFile(fileName, sourceText.replace(/im(port.+)/g,"//$1"), languageVersion, false, ts.ScriptKind.TS)
+            ? ts.createSourceFile(fileName, sourceText.replace(/im(port .+)/g,"//$1"), languageVersion, false, ts.ScriptKind.TS)
             : undefined;
     }
 }
@@ -99,6 +99,7 @@ function commentAllTypes(fileNames, options) {
             case (node.kind && node.kind == ts.SyntaxKind.ProtectedKeyword):
             case (node.kind && node.kind == ts.SyntaxKind.ReadonlyKeyword):
             case (node.kind && node.kind == ts.SyntaxKind.AbstractKeyword):
+            case (ts.isHeritageClause(node) && node.token && node.token == ts.SyntaxKind.ImplementsKeyword):
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                 break;
@@ -155,7 +156,7 @@ function commentAllTypes(fileNames, options) {
             default:
                 if (node.type) {
                     var pos, end;
-                    if (ts.isAsExpression(node) || (ts.isParameter(node) && node.questionToken)) {
+                    if (ts.isAsExpression(node) || (node.questionToken)) {
                         pos = node.type.pos - 2;
                     } else {
                         pos = node.type.pos - 1;
