@@ -64,7 +64,7 @@ function generateJavaScriptFile(path, options) {
             fileArr.push(path);
             var filename = path.replace(".ts", ".js");
             fs.copyFileSync(path, filename);
-            commentAllTypes(fileArr, options);
+            deTypescript(fileArr, options);
             applyEditsToFile(filename);
             edits = [];
         } else if (stat.isDirectory()) {
@@ -76,7 +76,7 @@ function generateJavaScriptFile(path, options) {
     }
 }
 
-function commentAllTypes(fileNames, options) {
+function deTypescript(fileNames, options) {
     var host = createCompilerHost(options);
     var program = ts.createProgram(fileNames, options, host);
     var checker = program.getTypeChecker();
@@ -102,6 +102,44 @@ function commentAllTypes(fileNames, options) {
             case (ts.isHeritageClause(node) && node.token && node.token == ts.SyntaxKind.ImplementsKeyword):
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+                commentOutTypes(node);
+                break;
+            case (node.decorators && node.decorators.length && (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node))):
+                var className = node.parent.name.getText();
+                let constructionName = node.name.getText();
+                edits.push({pos: node.decorators.pos, end: node.decorators.end});
+                var decorators = "__decorate([";
+                for (var i = 0; i < node.decorators.length; i++) {
+                    decorators += node.decorators[i].expression.getText() + ",";
+                }
+                if (ts.isMethodDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node)) {
+                    if (node.parameters && node.parameters.length) {
+                        for (var i = 0; i < node.parameters.length; i++) {
+                            if (node.parameters[i].decorators && node.parameters[i].decorators.length) {
+                                for (var j = 0; j < node.parameters[i].decorators.length; j++) {
+                                    decorators += "__param(" + i + "," + node.parameters[i].decorators[j].expression.getText() + "),";
+                                }
+                            }
+                        }
+                    }
+                    decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
+                } else {
+                    decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", void 0);";
+                }
+
+                edits.push({pos: node.parent.end, end: node.parent.end, afterEnd: decorators});
+                commentOutTypes(node);
+                break;
+            case (node.decorators && node.decorators.length && ts.isClassDeclaration(node)):
+                var className = node.name.getText();
+                let afterEnd = "let " + className + "= ";
+                edits.push({pos: node.decorators.pos, end: node.decorators.end, afterEnd: afterEnd});
+                var decorators = className + "= __decorate([";
+                for (var i = 0; i < node.decorators.length; i++) {
+                    decorators += node.decorators[i].expression.getText() + ",";
+                }
+                decorators = decorators.slice(0, -1) + "], " + className + ");";
+                edits.push({pos: node.end, end: node.end, afterEnd: decorators});
                 break;
             case (node.body && ts.isModuleDeclaration(node)):
                 //TODO: maybe need some checks for crazy stuff like abstract namespace Example etc
@@ -121,6 +159,7 @@ function commentAllTypes(fileNames, options) {
                     textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
                     edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 }
+                commentOutTypes(node);
                 break;
             case (ts.isFunctionDeclaration(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
             case (ts.isVariableStatement(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
@@ -154,26 +193,33 @@ function commentAllTypes(fileNames, options) {
                     }
                 }
             default:
-                if (node.type) {
-                    var pos, end;
-                    if (ts.isAsExpression(node) || (node.questionToken)) {
-                        pos = node.type.pos - 2;
-                    } else {
-                        pos = node.type.pos - 1;
-                    }
-                    if (ts.isTypeAssertion(node)) {
-                        end = node.type.end + 1;
-                    } else {
-                        end = node.type.end;
-                    }
-                    edits.push({pos: pos, end: end});
-                }
-                if (node.typeParameters) {
-                    edits.push({pos: node.typeParameters.pos - 1, end: node.typeParameters.end + 1});
-                }
+                commentOutTypes(node);
                 break;
         }
         ts.forEachChild(node, visit);
+    }
+
+    function commentOutTypes(node) {
+        if (node.type) {
+            var pos, end;
+            if (ts.isAsExpression(node) || (node.questionToken)) {
+                pos = node.type.pos - 2;
+            } else {
+                pos = node.type.pos - 1;
+            }
+            if (ts.isTypeAssertion(node)) {
+                end = node.type.end + 1;
+            } else {
+                end = node.type.end;
+            }
+            edits.push({pos: pos, end: end});
+        }
+        if (node.typeParameters) {
+            edits.push({pos: node.typeParameters.pos - 1, end: node.typeParameters.end + 1});
+        }
+        if (node.typeArguments) {
+            edits.push({pos: node.typeArguments.pos - 1, end: node.typeArguments.end + 1});
+        }
     }
 }
 
