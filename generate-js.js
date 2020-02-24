@@ -161,6 +161,51 @@ function deTypescript(fileNames, options) {
                 }
                 commentOutTypes(node);
                 break;
+            case (ts.isEnumDeclaration(node)):
+                let enumName = node.name.getText();
+                let textToPaste, initializer;
+                if(node.members && node.members.length > 0) {
+                    initializer = 0;
+                    for (var i = 0; i < node.members.length; i++) {
+                        if (node.members[i].initializer) {
+                            if (ts.isBinaryExpression(node.members[i].initializer)) {
+                                try {
+                                    initializer = eval(node.members[i].initializer.getText());
+                                } catch (e) {
+                                    initializer = node.members[i].initializer.getText();
+                                }
+                            } else {
+                                initializer = node.members[i].initializer.text;
+                            }
+                        } else {
+                            if (i != 0) {
+                                if (node.members[i - 1].initializer && typeof node.members[i - 1].initializer.text === "number") {
+                                    initializer = parseInt(node.members[i - 1].initializer.text) + 1;
+                                } else {
+
+                                    initializer++;
+                                }
+                            }
+                        }
+                        let end;
+                        if (i !== node.members.length - 1) {
+                            end = node.members[i + 1].pos;
+                        } else {
+                            if (node.members.hasTrailingComma == true) {
+                                end = node.members[i].end + 1;
+                            } else {
+                                end = node.members[i].end;
+                            }
+                        }
+                        textToPaste = enumName + "[" + enumName + "[\"" + node.members[i].name.getText() + "\"] = " + initializer + "] = " + '"' + node.members[i].name.getText() + '";';
+                        edits.push({pos: node.members[i].pos, end: end, afterEnd: textToPaste});
+                    }
+                }
+                textToPaste = "var " + enumName + ";(function (" + enumName + ")";
+                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: textToPaste});
+                textToPaste = ")(" + enumName + " || (" + enumName + " = {}));";
+                edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+                break;
             case (ts.isFunctionDeclaration(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
             case (ts.isVariableStatement(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
                 if (node.modifiers && node.modifiers.length > 0) {
