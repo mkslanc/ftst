@@ -117,6 +117,7 @@ function deTypescript(fileNames, options) {
                         for (var i = 0; i < node.parameters.length; i++) {
                             if (node.parameters[i].decorators && node.parameters[i].decorators.length) {
                                 for (var j = 0; j < node.parameters[i].decorators.length; j++) {
+                                    edits.push({pos: node.parameters[i].decorators[j].pos, end: node.parameters[i].decorators[j].end});
                                     decorators += "__param(" + i + "," + node.parameters[i].decorators[j].expression.getText() + "),";
                                 }
                             }
@@ -265,6 +266,9 @@ function deTypescript(fileNames, options) {
         if (node.typeArguments) {
             edits.push({pos: node.typeArguments.pos - 1, end: node.typeArguments.end + 1});
         }
+        if (node.questionToken && ts.isParameter(node)) {
+            edits.push({pos: node.questionToken.pos, end: node.questionToken.end});
+        }
     }
 }
 
@@ -287,7 +291,12 @@ function applyEditsToFile(filename) {
         if (edit.pos === edit.end) {
             end = afterEnd + start.slice(edit.end) + end;
         } else {
-            end = "/*" + start.slice(edit.pos, edit.end).replace(/\*\//g, "  ") + "*/" + afterEnd + start.slice(edit.end) + end;
+            let piece = start.slice(edit.pos, edit.end).replace(/\*\//g, "  ");
+            if (process.argv[3] == "-d" && !/\n/.test(piece)) {
+                end = afterEnd + start.slice(edit.end) + end;
+            } else {
+                end = "/*" + start.slice(edit.pos, edit.end).replace(/\*\//g, "  ") + "*/" + afterEnd + start.slice(edit.end) + end;
+            }
         }
         start = start.slice(0, edit.pos)
     });
