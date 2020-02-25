@@ -3,7 +3,7 @@ var ts = require("typescript");
 var fs = require("fs");
 var edits = [];
 
-function createCompilerHost(options) {
+function createCompilerHost(options, code) {
     return {
         getSourceFile: getSourceFile,
         getDefaultLibFileName: function () {
@@ -43,9 +43,13 @@ function createCompilerHost(options) {
     }
 
     function getSourceFile(fileName, languageVersion, onError) {
-        var sourceText = ts.sys.readFile(fileName);
+        if (!code) {
+            var sourceText = ts.sys.readFile(fileName);
+        } else {
+            var sourceText = code;
+        }
         return sourceText !== undefined
-            ? ts.createSourceFile(fileName, sourceText.replace(/im(port .+)/g,"//$1"), languageVersion, false, ts.ScriptKind.TS)
+            ? ts.createSourceFile(fileName, sourceText.replace(/im(port .+)/g, "//$1"), languageVersion, false, ts.ScriptKind.TS)
             : undefined;
     }
 }
@@ -76,8 +80,8 @@ function generateJavaScriptFile(path, options) {
     }
 }
 
-function deTypescript(fileNames, options) {
-    var host = createCompilerHost(options);
+function deTypescript(fileNames, options, code) {
+    var host = createCompilerHost(options, code);
     var program = ts.createProgram(fileNames, options, host);
     var checker = program.getTypeChecker();
 
@@ -117,7 +121,10 @@ function deTypescript(fileNames, options) {
                         for (var i = 0; i < node.parameters.length; i++) {
                             if (node.parameters[i].decorators && node.parameters[i].decorators.length) {
                                 for (var j = 0; j < node.parameters[i].decorators.length; j++) {
-                                    edits.push({pos: node.parameters[i].decorators[j].pos, end: node.parameters[i].decorators[j].end});
+                                    edits.push({
+                                        pos: node.parameters[i].decorators[j].pos,
+                                        end: node.parameters[i].decorators[j].end
+                                    });
                                     decorators += "__param(" + i + "," + node.parameters[i].decorators[j].expression.getText() + "),";
                                 }
                             }
@@ -147,16 +154,24 @@ function deTypescript(fileNames, options) {
                 let moduleName = node.name.getText();
 
                 if (node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)) {
-                    let textToPaste = "let " + moduleName + "; (function ("+ moduleName +")";
+                    let textToPaste = "let " + moduleName + "; (function (" + moduleName + ")";
                     let parentModuleName = node.parent.parent.name.getText();
-                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.body.pos, afterEnd: textToPaste});
-                    textToPaste = ")(" + moduleName + " = "+ parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        end: node.body.pos,
+                        afterEnd: textToPaste
+                    });
+                    textToPaste = ")(" + moduleName + " = " + parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
                     edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 } else {
-                    let textToPaste = (node.modifiers && node.modifiers.length > 0 ) ?
-                        "export var " + moduleName + "; (function ("+ moduleName +")":
-                        "var " + moduleName + "; (function ("+ moduleName +")";
-                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.body.pos, afterEnd: textToPaste});
+                    let textToPaste = (node.modifiers && node.modifiers.length > 0) ?
+                        "export var " + moduleName + "; (function (" + moduleName + ")" :
+                        "var " + moduleName + "; (function (" + moduleName + ")";
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        end: node.body.pos,
+                        afterEnd: textToPaste
+                    });
                     textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
                     edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 }
@@ -165,7 +180,7 @@ function deTypescript(fileNames, options) {
             case (ts.isEnumDeclaration(node)):
                 let enumName = node.name.getText();
                 let textToPaste, initializer;
-                if(node.members && node.members.length > 0) {
+                if (node.members && node.members.length > 0) {
                     initializer = 0;
                     for (var i = 0; i < node.members.length; i++) {
                         if (node.members[i].initializer) {
@@ -233,7 +248,11 @@ function deTypescript(fileNames, options) {
                                 let stopCommentPos = node.declarationList.declarations[i].pos +
                                     node.declarationList.declarations[i].getLeadingTriviaWidth();
                                 let textToPaste = moduleName + ".";
-                                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: stopCommentPos, afterEnd: textToPaste});
+                                edits.push({
+                                    pos: node.pos + node.getLeadingTriviaWidth(),
+                                    end: stopCommentPos,
+                                    afterEnd: textToPaste
+                                });
                             }
                         }
                     }
@@ -274,6 +293,12 @@ function deTypescript(fileNames, options) {
 
 function applyEditsToFile(filename) {
     var start = fs.readFileSync(filename, "utf8");
+    var end = applyEdits(start, (process.argv[3] == "-d"));
+    fs.writeFileSync(filename, end);
+}
+
+function applyEdits(code, remove) {
+    var start = code;
     var end = "";
     edits.sort((a, b) => b.end - a.end);
 
@@ -287,12 +312,12 @@ function applyEditsToFile(filename) {
     }
 
     edits.forEach(edit => {
-        let afterEnd = (edit.afterEnd)? edit.afterEnd : "";
+        let afterEnd = (edit.afterEnd) ? edit.afterEnd : "";
         if (edit.pos === edit.end) {
             end = afterEnd + start.slice(edit.end) + end;
         } else {
             let piece = start.slice(edit.pos, edit.end).replace(/\*\//g, "  ");
-            if (process.argv[3] == "-d" && !/\n/.test(piece)) {
+            if (remove && !/\n/.test(piece)) {
                 end = afterEnd + start.slice(edit.end) + end;
             } else {
                 end = "/*" + start.slice(edit.pos, edit.end).replace(/\*\//g, "  ") + "*/" + afterEnd + start.slice(edit.end) + end;
@@ -301,10 +326,18 @@ function applyEditsToFile(filename) {
         start = start.slice(0, edit.pos)
     });
     end = start + end;
-    fs.writeFileSync(filename, end);
     return end;
 }
 
-generateJavaScriptFile(process.argv.slice(2), {
-    target: ts.ScriptTarget.ES5, module: "None", allowJs: false, lib: [], types: [], noEmit: true
-});
+var transpileTypescriptCode = function transpileTypescriptCode(code, options, remove) {
+    deTypescript(['transpile-dummy.ts'], options, code);
+    return applyEdits(code, remove);
+};
+exports.transpileTypescriptCode = transpileTypescriptCode;
+
+if (process.argv.length > 2) {
+    generateJavaScriptFile(process.argv.slice(2), {
+        target: ts.ScriptTarget.ES5, module: "None", allowJs: false, lib: [], types: [], noEmit: true
+    });
+}
+
