@@ -127,7 +127,7 @@ function deTypescript(fileNames, options, code) {
                 } else {
                     className = node.parent.name.getText();
                 }
-                let constructionName = node.name.getText();
+                var constructionName = node.name.getText();
                 edits.push({pos: node.decorators.pos, end: node.decorators.end});
                 var decorators = "__decorate([";
                 for (var i = 0; i < node.decorators.length; i++) {
@@ -239,6 +239,7 @@ function deTypescript(fileNames, options, code) {
                 textToPaste = ")(" + enumName + " || (" + enumName + " = {}));";
                 edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 break;
+            case (ts.isClassDeclaration(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
             case (ts.isFunctionDeclaration(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
             case (ts.isVariableStatement(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
                 if (node.modifiers && node.modifiers.length > 0) {
@@ -251,31 +252,41 @@ function deTypescript(fileNames, options, code) {
                     if (check) {
                         let moduleName = node.parent.parent.name.getText();
                         if (ts.isFunctionDeclaration(node)) {
-                            let constructionName;
                             if (hasDefaultModifier(node)) {
                                 defaultCounter.functions++;
-                                constructionName = "default_" + defaultCounter.functions;
+                                var constructionName = "default_" + defaultCounter.functions;
                             } else {
-                                constructionName = node.name.getText();
+                                var constructionName = node.name.getText();
                             }
                             let textToPaste = moduleName + "." + constructionName + " = " + constructionName + ";";
                             edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                         } else {
-                            if (node.declarationList && node.declarationList.declarations) {
-                                var i = 0;
-                                while (i < node.declarationList.declarations.length) {
-                                    if (node.declarationList.declarations[i].pos >= node.pos && node.declarationList.declarations[i].pos <= node.end)
-                                        break;
-                                    i++;
+                            if (ts.isClassDeclaration(node)) {
+                                if (hasDefaultModifier(node)) {
+                                    defaultCounter.classes++;
+                                    var constructionName = "default_" + defaultCounter.classes;
+                                } else {
+                                    var constructionName = node.name.getText();
                                 }
-                                let stopCommentPos = node.declarationList.declarations[i].pos +
-                                    node.declarationList.declarations[i].getLeadingTriviaWidth();
-                                let textToPaste = moduleName + ".";
-                                edits.push({
-                                    pos: node.pos + node.getLeadingTriviaWidth(),
-                                    end: stopCommentPos,
-                                    afterEnd: textToPaste
-                                });
+                                let textToPaste = moduleName + "." + constructionName + " = " + constructionName + ";";
+                                edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+                            } else {
+                                if (node.declarationList && node.declarationList.declarations) {
+                                    var i = 0;
+                                    while (i < node.declarationList.declarations.length) {
+                                        if (node.declarationList.declarations[i].pos >= node.pos && node.declarationList.declarations[i].pos <= node.end)
+                                            break;
+                                        i++;
+                                    }
+                                    let stopCommentPos = node.declarationList.declarations[i].pos +
+                                        node.declarationList.declarations[i].getLeadingTriviaWidth();
+                                    let textToPaste = moduleName + ".";
+                                    edits.push({
+                                        pos: node.pos + node.getLeadingTriviaWidth(),
+                                        end: stopCommentPos,
+                                        afterEnd: textToPaste
+                                    });
+                                }
                             }
                         }
                     }
