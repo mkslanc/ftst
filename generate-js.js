@@ -1,7 +1,6 @@
 "use strict";
 var ts = require("typescript");
 var fs = require("fs");
-var edits = [];
 
 function createCompilerHost(options, code) {
     return {
@@ -68,9 +67,8 @@ function generateJavaScriptFile(path, options) {
             fileArr.push(path);
             var filename = path.replace(".ts", ".js");
             fs.copyFileSync(path, filename);
-            deTypescript(fileArr, options);
-            applyEditsToFile(filename);
-            edits = [];
+            let edits = deTypescript(fileArr, options);
+            applyEditsToFile(filename, edits);
         } else if (stat.isDirectory()) {
             var files = fs.readdirSync(path).sort();
             files.forEach(function (name) {
@@ -84,6 +82,7 @@ function deTypescript(fileNames, options, code) {
     var host = createCompilerHost(options, code);
     var program = ts.createProgram(fileNames, options, host);
     var checker = program.getTypeChecker();
+    var edits = [];
 
     for (var _i = 0, _a = program.getSourceFiles(); _i < _a.length; _i++) {
         var sourceFile = _a[_i];
@@ -302,16 +301,18 @@ function deTypescript(fileNames, options, code) {
             });
         }
     }
+
+    return edits;
 }
 
-function applyEditsToFile(filename) {
+function applyEditsToFile(filename, edits) {
     var start = fs.readFileSync(filename, "utf8");
     start = start.replace(/^\uFEFF/, '');
-    var end = applyEdits(start, (process.argv[3] == "-d"));
+    var end = applyEdits(start, (process.argv[3] == "-d"), edits);
     fs.writeFileSync(filename, end);
 }
 
-function applyEdits(code, remove) {
+function applyEdits(code, remove, edits) {
     var start = code;
     var end = "";
     edits.sort((a, b) => b.end - a.end);
@@ -344,8 +345,8 @@ function applyEdits(code, remove) {
 }
 
 var transpileTypescriptCode = function transpileTypescriptCode(code, options, remove) {
-    deTypescript(['transpile-dummy.ts'], options, code);
-    return applyEdits(code, remove);
+    let edits = deTypescript(['transpile-dummy.ts'], options, code);
+    return applyEdits(code, remove, edits);
 };
 exports.transpileTypescriptCode = transpileTypescriptCode;
 
