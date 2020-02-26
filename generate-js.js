@@ -108,6 +108,9 @@ function deTypescript(fileNames, options, code) {
                 edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                 commentOutTypes(node);
                 break;
+            case (node.kind && node.kind == ts.SyntaxKind.DeclareKeyword):
+                edits.push({pos: node.parent.pos + node.parent.getLeadingTriviaWidth(), end: node.parent.end});
+                break;
             case (node.decorators && node.decorators.length && (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node))):
                 var className = node.parent.name.getText();
                 let constructionName = node.name.getText();
@@ -149,7 +152,7 @@ function deTypescript(fileNames, options, code) {
                 decorators = decorators.slice(0, -1) + "], " + className + ");";
                 edits.push({pos: node.end, end: node.end, afterEnd: decorators});
                 break;
-            case (node.body && ts.isModuleDeclaration(node)):
+            case (node.body && ts.isModuleDeclaration(node) && !hasDeclareModifier(node)):
                 //TODO: maybe need some checks for crazy stuff like abstract namespace Example etc
                 let moduleName = node.name.getText();
 
@@ -177,7 +180,7 @@ function deTypescript(fileNames, options, code) {
                 }
                 commentOutTypes(node);
                 break;
-            case (ts.isEnumDeclaration(node)):
+            case (ts.isEnumDeclaration(node) && !hasDeclareModifier(node)):
                 let enumName = node.name.getText();
                 let textToPaste, initializer;
                 if (node.members && node.members.length > 0) {
@@ -289,10 +292,21 @@ function deTypescript(fileNames, options, code) {
             edits.push({pos: node.questionToken.pos, end: node.questionToken.end});
         }
     }
+
+    function hasDeclareModifier(node) {
+        if (node.modifiers && node.modifiers.length > 0) {
+            return node.modifiers.some(function (el) {
+                if (el.kind == ts.SyntaxKind.DeclareKeyword) {
+                    return true
+                }
+            });
+        }
+    }
 }
 
 function applyEditsToFile(filename) {
     var start = fs.readFileSync(filename, "utf8");
+    start = start.replace(/^\uFEFF/, '');
     var end = applyEdits(start, (process.argv[3] == "-d"));
     fs.writeFileSync(filename, end);
 }
@@ -303,8 +317,8 @@ function applyEdits(code, remove) {
     edits.sort((a, b) => b.end - a.end);
 
     for (var i = 1; i < edits.length; i++) {
-        for (var j = i - 1; j > 0; j--) {
-            if (edits[j + 1].pos != edits[j + 1].end && edits[j + 1].pos >= edits[j].pos && edits[j + 1].end <= edits[j].end) {
+        for (var j = i - 1; j >= 0; j--) {
+            if (edits[j + 1].pos >= edits[j].pos && edits[j + 1].end <= edits[j].end) {
                 edits.splice(j + 1, 1);
                 i--;
             }
