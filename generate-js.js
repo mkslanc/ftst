@@ -83,6 +83,10 @@ function deTypescript(fileNames, options, code) {
     var program = ts.createProgram(fileNames, options, host);
     var checker = program.getTypeChecker();
     var edits = [];
+    var defaultCounter = {
+        "functions": 0,
+        "classes": 0
+    };
 
     for (var _i = 0, _a = program.getSourceFiles(); _i < _a.length; _i++) {
         var sourceFile = _a[_i];
@@ -111,7 +115,18 @@ function deTypescript(fileNames, options, code) {
                 edits.push({pos: node.parent.pos + node.parent.getLeadingTriviaWidth(), end: node.parent.end});
                 break;
             case (node.decorators && node.decorators.length && (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node))):
-                var className = node.parent.name.getText();
+                var className;
+                if (hasDefaultModifier(node.parent)) {
+                    defaultCounter.classes++;
+                    className = "default_" + defaultCounter.classes;
+                    edits.push({
+                        pos: node.parent.members.pos - 1,
+                        end: node.parent.members.pos - 1,
+                        afterEnd: className
+                    });
+                } else {
+                    className = node.parent.name.getText();
+                }
                 let constructionName = node.name.getText();
                 edits.push({pos: node.decorators.pos, end: node.decorators.end});
                 var decorators = "__decorate([";
@@ -236,7 +251,13 @@ function deTypescript(fileNames, options, code) {
                     if (check) {
                         let moduleName = node.parent.parent.name.getText();
                         if (ts.isFunctionDeclaration(node)) {
-                            let constructionName = node.name.getText();
+                            let constructionName;
+                            if (hasDefaultModifier(node)) {
+                                defaultCounter.functions++;
+                                constructionName = "default_" + defaultCounter.functions;
+                            } else {
+                                constructionName = node.name.getText();
+                            }
                             let textToPaste = moduleName + "." + constructionName + " = " + constructionName + ";";
                             edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                         } else {
@@ -296,6 +317,16 @@ function deTypescript(fileNames, options, code) {
         if (node.modifiers && node.modifiers.length > 0) {
             return node.modifiers.some(function (el) {
                 if (el.kind == ts.SyntaxKind.DeclareKeyword) {
+                    return true
+                }
+            });
+        }
+    }
+
+    function hasDefaultModifier(node) {
+        if (node.modifiers && node.modifiers.length > 0) {
+            return node.modifiers.some(function (el) {
+                if (el.kind == ts.SyntaxKind.DefaultKeyword) {
                     return true
                 }
             });
