@@ -230,7 +230,8 @@ function deTypescript(fileNames, options, code) {
                                 end = node.members[i].end;
                             }
                         }
-                        textToPaste = enumName + "[" + enumName + "[\"" + node.members[i].name.getText() + "\"] = " + initializer + "] = " + '"' + node.members[i].name.getText() + '";';
+                        let memberName = (/"(.)+"/.test(node.members[i].name.getText())) ? node.members[i].name.getText() : '"' + node.members[i].name.getText() + '"';
+                        textToPaste = enumName + "[" + enumName + "[" + memberName + "] = " + initializer + "] = " + memberName + ';';
                         edits.push({pos: node.members[i].pos, end: end, afterEnd: textToPaste});
                     }
                 }
