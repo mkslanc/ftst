@@ -114,9 +114,9 @@ function deTypescript(fileNames, options, code) {
             case (node.kind && node.kind == ts.SyntaxKind.DeclareKeyword):
                 edits.push({pos: node.parent.pos + node.parent.getLeadingTriviaWidth(), end: node.parent.end});
                 break;
-            case (node.decorators && node.decorators.length && (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node))):
+            case (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node)):
                 var className;
-                if (hasDefaultModifier(node.parent)) {
+                if (hasDefaultModifier(node.parent) && !node.parent.name) {
                     defaultCounter.classes++;
                     className = "default_" + defaultCounter.classes;
                     edits.push({
@@ -125,41 +125,46 @@ function deTypescript(fileNames, options, code) {
                         afterEnd: className
                     });
                 } else {
+                    if (!node.parent.name)
+                        break;
                     className = node.parent.name.getText();
                 }
                 var constructionName = node.name.getText();
-                edits.push({pos: node.decorators.pos, end: node.decorators.end});
-                var decorators = "__decorate([";
-                for (var i = 0; i < node.decorators.length; i++) {
-                    decorators += node.decorators[i].expression.getText() + ",";
-                }
-                if (ts.isMethodDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node)) {
-                    if (node.parameters && node.parameters.length) {
-                        for (var i = 0; i < node.parameters.length; i++) {
-                            if (node.parameters[i].decorators && node.parameters[i].decorators.length) {
-                                for (var j = 0; j < node.parameters[i].decorators.length; j++) {
-                                    edits.push({
-                                        pos: node.parameters[i].decorators[j].pos,
-                                        end: node.parameters[i].decorators[j].end
-                                    });
-                                    decorators += "__param(" + i + "," + node.parameters[i].decorators[j].expression.getText() + "),";
-                                }
-                            }
-                        }
-                    }
-                    decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
-                } else {
-                    decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", void 0);";
-                }
 
-                edits.push({pos: node.parent.end, end: node.parent.end, afterEnd: decorators});
+                if (node.decorators && node.decorators.length) {
+                    edits.push({pos: node.decorators.pos, end: node.decorators.end});
+                    var decorators = "__decorate([";
+                    for (var i = 0; i < node.decorators.length; i++) {
+                        decorators += node.decorators[i].expression.getText() + ",";
+                    }
+                    if (ts.isPropertyDeclaration(node)) {
+                        decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", void 0);";
+                    } else {
+                        if (hasParametersDecorators(node)) {
+                            decorators += commentOutParametersDecorators(node);
+                        }
+                        decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
+                    }
+                    edits.push({pos: node.parent.end, end: node.parent.end, afterEnd: decorators});
+                } else {
+                    if (hasParametersDecorators(node)) {
+                        var decorators = "__decorate([";
+                        decorators += commentOutParametersDecorators(node);
+                        decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
+                        edits.push({pos: node.parent.end, end: node.parent.end, afterEnd: decorators});
+                    }
+                }
                 commentOutTypes(node);
                 break;
             case (node.decorators && node.decorators.length && ts.isClassDeclaration(node)):
                 var className = node.name.getText();
                 let afterEnd = "let " + className + "= ";
-                edits.push({pos: node.decorators.pos, end: node.decorators.end, afterEnd: afterEnd});
-                var decorators = className + "= __decorate([";
+                edits.push({
+                    pos: node.decorators.pos + node.getLeadingTriviaWidth(),
+                    end: node.decorators.end,
+                    afterEnd: afterEnd
+                });
+                var decorators = ";" + className + "= __decorate([";
                 for (var i = 0; i < node.decorators.length; i++) {
                     decorators += node.decorators[i].expression.getText() + ",";
                 }
@@ -339,6 +344,34 @@ function deTypescript(fileNames, options, code) {
         if (node.modifiers && node.modifiers.length > 0) {
             return node.modifiers.some(function (el) {
                 if (el.kind == ts.SyntaxKind.DefaultKeyword) {
+                    return true
+                }
+            });
+        }
+    }
+
+    function commentOutParametersDecorators(node) {
+        let decorators = '';
+
+        for (var i = 0; i < node.parameters.length; i++) {
+            if (node.parameters[i].decorators && node.parameters[i].decorators.length) {
+                for (var j = 0; j < node.parameters[i].decorators.length; j++) {
+                    edits.push({
+                        pos: node.parameters[i].decorators[j].pos,
+                        end: node.parameters[i].decorators[j].end
+                    });
+                    decorators += "__param(" + i + "," + node.parameters[i].decorators[j].expression.getText() + "),";
+                }
+            }
+        }
+
+        return decorators;
+    }
+
+    function hasParametersDecorators(node) {
+        if (node.parameters && node.parameters.length > 0) {
+            return node.parameters.some(function (param) {
+                if (param.decorators && param.decorators.length > 0) {
                     return true
                 }
             });
