@@ -363,6 +363,9 @@ function applyEdits(code, remove, edits) {
     for (var i = 1; i < edits.length; i++) {
         for (var j = i - 1; j >= 0; j--) {
             if (edits[j + 1].pos >= edits[j].pos && edits[j + 1].end <= edits[j].end) {
+                if (edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end) {
+                    edits[j].afterEnd += edits[j + 1].afterEnd;
+                }
                 edits.splice(j + 1, 1);
                 i--;
             }
