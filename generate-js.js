@@ -200,103 +200,12 @@ function deTypescript(fileNames, options, code) {
                 commentOutTypes(node);
                 break;
             case (ts.isEnumDeclaration(node) && !hasDeclareModifier(node)):
-                let enumName = node.name.getText();
-                let textToPaste, initializer;
-                if (node.members && node.members.length > 0) {
-                    initializer = 0;
-                    for (var i = 0; i < node.members.length; i++) {
-                        if (node.members[i].initializer) {
-                            if (ts.isBinaryExpression(node.members[i].initializer)) {
-                                try {
-                                    initializer = eval(node.members[i].initializer.getText());
-                                } catch (e) {
-                                    initializer = node.members[i].initializer.getText();
-                                }
-                            } else {
-                                initializer = node.members[i].initializer.text;
-                            }
-                        } else {
-                            if (i != 0) {
-                                if (node.members[i - 1].initializer && typeof node.members[i - 1].initializer.text === "number") {
-                                    initializer = parseInt(node.members[i - 1].initializer.text) + 1;
-                                } else {
-
-                                    initializer++;
-                                }
-                            }
-                        }
-                        let end;
-                        if (i !== node.members.length - 1) {
-                            end = node.members[i + 1].pos;
-                        } else {
-                            if (node.members.hasTrailingComma == true) {
-                                end = node.members[i].end + 1;
-                            } else {
-                                end = node.members[i].end;
-                            }
-                        }
-                        let memberName = (/"(.)+"/.test(node.members[i].name.getText())) ? node.members[i].name.getText() : '"' + node.members[i].name.getText() + '"';
-                        textToPaste = enumName + "[" + enumName + "[" + memberName + "] = " + initializer + "] = " + memberName + ';';
-                        edits.push({pos: node.members[i].pos, end: end, afterEnd: textToPaste});
-                    }
-                }
-                textToPaste = "var " + enumName + ";(function (" + enumName + ")";
-                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: textToPaste});
-                textToPaste = ")(" + enumName + " || (" + enumName + " = {}));";
-                edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+                transformEnum(node);
                 break;
             case (ts.isClassDeclaration(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
             case (ts.isFunctionDeclaration(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
             case (ts.isVariableStatement(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
-                if (node.modifiers && node.modifiers.length > 0) {
-                    var check = node.modifiers.some(function (el) {
-                        if (el.kind == ts.SyntaxKind.ExportKeyword) {
-                            edits.push({pos: el.pos + el.getLeadingTriviaWidth(), end: el.end});
-                            return true
-                        }
-                    });
-                    if (check) {
-                        let moduleName = node.parent.parent.name.getText();
-                        if (ts.isFunctionDeclaration(node)) {
-                            if (hasDefaultModifier(node)) {
-                                defaultCounter.functions++;
-                                var constructionName = "default_" + defaultCounter.functions;
-                            } else {
-                                var constructionName = node.name.getText();
-                            }
-                            let textToPaste = moduleName + "." + constructionName + " = " + constructionName + ";";
-                            edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
-                        } else {
-                            if (ts.isClassDeclaration(node)) {
-                                if (hasDefaultModifier(node)) {
-                                    defaultCounter.classes++;
-                                    var constructionName = "default_" + defaultCounter.classes;
-                                } else {
-                                    var constructionName = node.name.getText();
-                                }
-                                let textToPaste = moduleName + "." + constructionName + " = " + constructionName + ";";
-                                edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
-                            } else {
-                                if (node.declarationList && node.declarationList.declarations) {
-                                    var i = 0;
-                                    while (i < node.declarationList.declarations.length) {
-                                        if (node.declarationList.declarations[i].pos >= node.pos && node.declarationList.declarations[i].pos <= node.end)
-                                            break;
-                                        i++;
-                                    }
-                                    let stopCommentPos = node.declarationList.declarations[i].pos +
-                                        node.declarationList.declarations[i].getLeadingTriviaWidth();
-                                    let textToPaste = moduleName + ".";
-                                    edits.push({
-                                        pos: node.pos + node.getLeadingTriviaWidth(),
-                                        end: stopCommentPos,
-                                        afterEnd: textToPaste
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
+                transformExportConstructions(node);
             default:
                 commentOutTypes(node);
                 break;
@@ -368,6 +277,61 @@ function deTypescript(fileNames, options, code) {
         return decorators;
     }
 
+    function transformEnum(node) {
+        let enumName = node.name.getText();
+        let textToPaste, initializer;
+        if (node.members && node.members.length > 0) {
+            initializer = 0;
+            for (var i = 0; i < node.members.length; i++) {
+                if (node.members[i].initializer) {
+                    if (ts.isBinaryExpression(node.members[i].initializer)) {
+                        try {
+                            initializer = eval(node.members[i].initializer.getText());
+                        } catch (e) {
+                            initializer = node.members[i].initializer.getText();
+                        }
+                    } else {
+                        initializer = node.members[i].initializer.text;
+                    }
+                } else {
+                    if (i != 0) {
+                        if (node.members[i - 1].initializer && typeof node.members[i - 1].initializer.text === "number") {
+                            initializer = parseInt(node.members[i - 1].initializer.text) + 1;
+                        } else {
+
+                            initializer++;
+                        }
+                    }
+                }
+                let end;
+                if (i !== node.members.length - 1) {
+                    end = node.members[i + 1].pos;
+                } else {
+                    if (node.members.hasTrailingComma == true) {
+                        end = node.members[i].end + 1;
+                    } else {
+                        end = node.members[i].end;
+                    }
+                }
+                let memberName = (/"(.)+"/.test(node.members[i].name.text) || ts.isNumericLiteral(node.members[i].name)) ? node.members[i].name.text : '"' + node.members[i].name.text + '"';
+                textToPaste = enumName + "[" + enumName + "[" + memberName + "] = " + initializer + "] = " + memberName + ';';
+                edits.push({pos: node.members[i].pos, end: end, afterEnd: textToPaste});
+            }
+        }
+        if (node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent) && hasExportModifier(node)) {
+            textToPaste = "let " + enumName + ";(function (" + enumName + ")";
+            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: textToPaste});
+            let moduleName = node.parent.parent.name.getText();
+            textToPaste = ")(" + enumName + " = " + moduleName + "." + enumName + " || (" + moduleName + "." + enumName + " = {}));";
+        } else {
+            textToPaste = "var " + enumName + ";(function (" + enumName + ")";
+            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: textToPaste});
+            textToPaste = ")(" + enumName + " || (" + enumName + " = {}));";
+        }
+
+        edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+    }
+
     function hasParametersDecorators(node) {
         if (node.parameters && node.parameters.length > 0) {
             return node.parameters.some(function (param) {
@@ -375,6 +339,75 @@ function deTypescript(fileNames, options, code) {
                     return true
                 }
             });
+        }
+    }
+
+    function hasExportModifier(node) {
+        if (node.modifiers && node.modifiers.length > 0) {
+            return node.modifiers.some(function (el) {
+                if (el.kind == ts.SyntaxKind.ExportKeyword) {
+                    edits.push({pos: el.pos + el.getLeadingTriviaWidth(), end: el.end});
+                    return true
+                }
+            });
+        }
+    }
+
+    function transformExportFunction(node) {
+        let moduleName = node.parent.parent.name.getText();
+        if (hasDefaultModifier(node)) {
+            defaultCounter.functions++;
+            var constructionName = "default_" + defaultCounter.functions;
+        } else {
+            var constructionName = node.name.getText();
+        }
+        let textToPaste = moduleName + "." + constructionName + " = " + constructionName + ";";
+        edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+    }
+
+    function transformExportClass(node) {
+        let moduleName = node.parent.parent.name.getText();
+        if (hasDefaultModifier(node)) {
+            defaultCounter.classes++;
+            var constructionName = "default_" + defaultCounter.classes;
+        } else {
+            var constructionName = node.name.getText();
+        }
+        let textToPaste = moduleName + "." + constructionName + " = " + constructionName + ";";
+        edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+    }
+
+    function transformExportVariable(node) {
+        if (node.declarationList && node.declarationList.declarations) {
+            let moduleName = node.parent.parent.name.getText();
+            var i = 0;
+            while (i < node.declarationList.declarations.length) {
+                if (node.declarationList.declarations[i].pos >= node.pos && node.declarationList.declarations[i].pos <= node.end)
+                    break;
+                i++;
+            }
+            let stopCommentPos = node.declarationList.declarations[i].pos +
+                node.declarationList.declarations[i].getLeadingTriviaWidth();
+            let textToPaste = moduleName + ".";
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                end: stopCommentPos,
+                afterEnd: textToPaste
+            });
+        }
+    }
+
+    function transformExportConstructions(node) {
+        if (hasExportModifier(node)) {
+            if (ts.isFunctionDeclaration(node)) {
+                transformExportFunction(node);
+            } else {
+                if (ts.isClassDeclaration(node)) {
+                    transformExportClass(node);
+                } else {
+                    transformExportVariable(node);
+                }
+            }
         }
     }
 
