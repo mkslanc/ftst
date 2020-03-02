@@ -130,7 +130,6 @@ function deTypescript(fileNames, options, code) {
                     className = node.parent.name.getText();
                 }
                 var constructionName = node.name.getText();
-
                 if (node.decorators && node.decorators.length) {
                     edits.push({pos: node.decorators.pos, end: node.decorators.end});
                     var decorators = "__decorate([";
@@ -284,21 +283,19 @@ function deTypescript(fileNames, options, code) {
             initializer = 0;
             for (var i = 0; i < node.members.length; i++) {
                 if (node.members[i].initializer) {
-                    if (ts.isBinaryExpression(node.members[i].initializer)) {
-                        try {
-                            initializer = eval(node.members[i].initializer.getText());
-                        } catch (e) {
+                    if (node.members[i].initializer.kind == ts.SyntaxKind.ThisKeyword) {
+                        initializer = "this";
+                    } else {
+                        initializer = checker.getConstantValue(node.members[i]);
+                        if (initializer == undefined) {
                             initializer = node.members[i].initializer.getText();
                         }
-                    } else {
-                        initializer = node.members[i].initializer.text;
                     }
                 } else {
                     if (i != 0) {
-                        if (node.members[i - 1].initializer && typeof node.members[i - 1].initializer.text === "number") {
-                            initializer = parseInt(node.members[i - 1].initializer.text) + 1;
+                        if (node.members[i - 1].initializer && typeof node.members[i - 1].initializer.getText() === "number") {
+                            initializer = parseInt(node.members[i - 1].initializer.getText()) + 1;
                         } else {
-
                             initializer++;
                         }
                     }
