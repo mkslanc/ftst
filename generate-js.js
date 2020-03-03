@@ -48,7 +48,7 @@ function createCompilerHost(options, code) {
             var sourceText = code;
         }
         return sourceText !== undefined
-            ? ts.createSourceFile(fileName, sourceText.replace(/im(port .+)/g, "//$1"), languageVersion, false, ts.ScriptKind.TS)
+            ? ts.createSourceFile(fileName, sourceText, languageVersion, false, ts.ScriptKind.TS)
             : undefined;
     }
 }
@@ -83,10 +83,8 @@ function deTypescript(fileNames, options, code) {
     var program = ts.createProgram(fileNames, options, host);
     var checker = program.getTypeChecker();
     var edits = [];
-    var defaultCounter = {
-        "functions": 0,
-        "classes": 0
-    };
+    var defaultCounter = 0;
+    var exportExists = false;
 
     for (var _i = 0, _a = program.getSourceFiles(); _i < _a.length; _i++) {
         var sourceFile = _a[_i];
@@ -109,7 +107,6 @@ function deTypescript(fileNames, options, code) {
             case (ts.isHeritageClause(node) && node.token && node.token == ts.SyntaxKind.ImplementsKeyword):
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
-                commentOutTypes(node);
                 break;
             case (node.kind && node.kind == ts.SyntaxKind.DeclareKeyword):
                 edits.push({pos: node.parent.pos + node.parent.getLeadingTriviaWidth(), end: node.parent.end});
@@ -117,13 +114,7 @@ function deTypescript(fileNames, options, code) {
             case (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node)):
                 var className;
                 if (hasDefaultModifier(node.parent) && !node.parent.name) {
-                    defaultCounter.classes++;
-                    className = "default_" + defaultCounter.classes;
-                    edits.push({
-                        pos: node.parent.members.pos - 1,
-                        end: node.parent.members.pos - 1,
-                        afterEnd: className
-                    });
+                    className = "default_" + defaultCounter;
                 } else {
                     if (!node.parent.name)
                         break;
@@ -153,7 +144,9 @@ function deTypescript(fileNames, options, code) {
                         edits.push({pos: node.parent.end, end: node.parent.end, afterEnd: decorators});
                     }
                 }
-                commentOutTypes(node);
+                if (ts.isPropertyDeclaration(node) && !node.initializer) {
+                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+                }
                 break;
             case (node.decorators && node.decorators.length && ts.isClassDeclaration(node)):
                 var className = node.name.getText();
@@ -173,8 +166,7 @@ function deTypescript(fileNames, options, code) {
             case (node.body && ts.isModuleDeclaration(node) && !hasDeclareModifier(node)):
                 //TODO: maybe need some checks for crazy stuff like abstract namespace Example etc
                 let moduleName = node.name.getText();
-
-                if (node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)) {
+                if (isInsideModule(node)) {
                     let textToPaste = "let " + moduleName + "; (function (" + moduleName + ")";
                     let parentModuleName = node.parent.parent.name.getText();
                     edits.push({
@@ -182,10 +174,14 @@ function deTypescript(fileNames, options, code) {
                         end: node.body.pos,
                         afterEnd: textToPaste
                     });
-                    textToPaste = ")(" + moduleName + " = " + parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
+                    if (hasExportModifier(node)) {
+                        textToPaste = ")(" + moduleName + " = " + parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
+                    } else {
+                        textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
+                    }
                     edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 } else {
-                    let textToPaste = (node.modifiers && node.modifiers.length > 0) ?
+                    let textToPaste = (hasExportModifier(node)) ?
                         "export var " + moduleName + "; (function (" + moduleName + ")" :
                         "var " + moduleName + "; (function (" + moduleName + ")";
                     edits.push({
@@ -196,19 +192,42 @@ function deTypescript(fileNames, options, code) {
                     textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
                     edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 }
-                commentOutTypes(node);
                 break;
             case (ts.isEnumDeclaration(node) && !hasDeclareModifier(node)):
                 transformEnum(node);
                 break;
-            case (ts.isClassDeclaration(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
-            case (ts.isFunctionDeclaration(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
-            case (ts.isVariableStatement(node) && node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent)):
-                transformExportConstructions(node);
-            default:
-                commentOutTypes(node);
+            case (ts.isFunctionDeclaration(node) && hasExportModifier(node)):
+                exportExists = true;
+                transformExportFunction(node);
+                break;
+            case (ts.isVariableStatement(node) && hasExportModifier(node)):
+                exportExists = true;
+                transformExportVariable(node);
+                break;
+            case (ts.isImportEqualsDeclaration(node)):
+                var textToPaste;
+                if (node.moduleReference && ts.isExternalModuleReference(node.moduleReference)) {
+                    exportExists = true;
+                    textToPaste = 'const ';
+                } else {
+                    if (hasExportModifier(node)) {
+                        textToPaste = getModuleName(node) + '.';
+                    } else {
+                        textToPaste = 'var '
+                    }
+                }
+                edits.push({
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    end: node.name.pos + 1,
+                    afterEnd: textToPaste
+                });
+                break;
+            case (ts.isClassDeclaration(node) && hasExportModifier(node)):
+                exportExists = true;
+                transformExportClass(node);
                 break;
         }
+        commentOutTypes(node);
         ts.forEachChild(node, visit);
     }
 
@@ -251,6 +270,7 @@ function deTypescript(fileNames, options, code) {
     function hasDefaultModifier(node) {
         if (node.modifiers && node.modifiers.length > 0) {
             return node.modifiers.some(function (el) {
+                edits.push({pos: el.pos + el.getLeadingTriviaWidth(), end: el.end});
                 if (el.kind == ts.SyntaxKind.DefaultKeyword) {
                     return true
                 }
@@ -351,32 +371,56 @@ function deTypescript(fileNames, options, code) {
     }
 
     function transformExportFunction(node) {
-        let moduleName = node.parent.parent.name.getText();
+        let moduleName = getModuleName(node);
+        var constructionName, dotPropertyName;
         if (hasDefaultModifier(node)) {
-            defaultCounter.functions++;
-            var constructionName = "default_" + defaultCounter.functions;
+            if (!node.name) {
+                defaultCounter++;
+                constructionName = "default_" + defaultCounter;
+                edits.push({
+                    pos: node.parameters.pos - 1,
+                    end: node.parameters.pos - 1,
+                    afterEnd: constructionName
+                });
+            } else {
+                constructionName = node.name.getText();
+            }
+            dotPropertyName = "default";
         } else {
-            var constructionName = node.name.getText();
+            constructionName = node.name.getText();
+            dotPropertyName = constructionName;
         }
-        let textToPaste = moduleName + "." + constructionName + " = " + constructionName + ";";
+        let textToPaste = moduleName + "." + dotPropertyName + " = " + constructionName + ";";
         edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
     }
 
     function transformExportClass(node) {
-        let moduleName = node.parent.parent.name.getText();
+        let moduleName = getModuleName(node);
+        var constructionName, dotPropertyName;
         if (hasDefaultModifier(node)) {
-            defaultCounter.classes++;
-            var constructionName = "default_" + defaultCounter.classes;
+            if (!node.name) {
+                defaultCounter++;
+                constructionName = "default_" + defaultCounter;
+                edits.push({
+                    pos: node.members.pos - 1,
+                    end: node.members.pos - 1,
+                    afterEnd: constructionName
+                });
+            } else {
+                constructionName = node.name.getText();
+            }
+            dotPropertyName = "default";
         } else {
-            var constructionName = node.name.getText();
+            constructionName = node.name.getText();
+            dotPropertyName = constructionName;
         }
-        let textToPaste = moduleName + "." + constructionName + " = " + constructionName + ";";
+        let textToPaste = moduleName + "." + dotPropertyName + " = " + constructionName + ";";
         edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
     }
 
     function transformExportVariable(node) {
         if (node.declarationList && node.declarationList.declarations) {
-            let moduleName = node.parent.parent.name.getText();
+            let moduleName = getModuleName(node);
             var i = 0;
             while (i < node.declarationList.declarations.length) {
                 if (node.declarationList.declarations[i].pos >= node.pos && node.declarationList.declarations[i].pos <= node.end)
@@ -394,18 +438,20 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
-    function transformExportConstructions(node) {
-        if (hasExportModifier(node)) {
-            if (ts.isFunctionDeclaration(node)) {
-                transformExportFunction(node);
-            } else {
-                if (ts.isClassDeclaration(node)) {
-                    transformExportClass(node);
-                } else {
-                    transformExportVariable(node);
-                }
-            }
-        }
+    function isInsideModule(node) {
+        return (node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent));
+    }
+    
+    function getModuleName(node) {
+        return isInsideModule(node)?node.parent.parent.name.getText():"exports";
+    }
+
+    if (exportExists) {
+        edits.push({
+            pos: 0,
+            end: 0,
+            afterEnd: "Object.defineProperty(exports, \"__esModule\", { value: true });"
+        });
     }
 
     return edits;
