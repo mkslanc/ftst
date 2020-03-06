@@ -85,6 +85,8 @@ function deTypescript(fileNames, options, code) {
     var edits = [];
     var defaultCounter = 0;
     var exportExists = false;
+    var moduleReferencesNames = {};
+    var modulesIdentifiers = {};
 
     for (var _i = 0, _a = program.getSourceFiles(); _i < _a.length; _i++) {
         var sourceFile = _a[_i];
@@ -95,6 +97,19 @@ function deTypescript(fileNames, options, code) {
 
     function visit(node) {
         switch (true) {
+            case (ts.isExportAssignment(node)):
+                edits.push({pos: node.pos + node.getLeadingTriviaWidth()+ 6, end: node.pos + node.getLeadingTriviaWidth()+ 7, afterEnd:"s."});
+                edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd:" ="});
+                exportExists = true;
+                break;
+            case (ts.isIdentifier(node) && isImportedIdentifier(node)):
+                var symbol = sourceFile.locals.get(node.text);
+                if (symbol && hasImportSpecifierDeclaration(symbol)) {
+                    let regExp = new RegExp("[.]" + node.text);
+                    if(!regExp.test(node.parent.getText()))
+                        edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.pos + node.getLeadingTriviaWidth(), afterEnd: getComposedIdentifierName(node)});
+                }
+                break;
             case ts.isTypeAliasDeclaration(node):
             case ts.isInterfaceDeclaration(node):
             case (ts.isFunctionDeclaration(node) && !node.body):
@@ -222,6 +237,19 @@ function deTypescript(fileNames, options, code) {
                     afterEnd: textToPaste
                 });
                 break;
+            case (ts.isImportDeclaration(node)):
+                var moduleReferenceName = getModuleSpecifierName(node.moduleSpecifier);
+                if (moduleReferenceName) {
+                    exportExists = true;
+                    if (!moduleReferencesNames[moduleReferenceName]) {
+                        moduleReferencesNames[moduleReferenceName] = 0;
+                    }
+                    moduleReferencesNames[moduleReferenceName]++;
+                    setImportedIdentifiers(node, moduleReferenceName);
+                    textToPaste = "const " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
+                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
+                }
+                break;
             case (ts.isClassDeclaration(node) && hasExportModifier(node)):
                 exportExists = true;
                 transformExportClass(node);
@@ -229,6 +257,33 @@ function deTypescript(fileNames, options, code) {
         }
         commentOutTypes(node);
         ts.forEachChild(node, visit);
+    }
+
+    function setImportedIdentifiers(node, moduleName) {
+        if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.elements && node.importClause.namedBindings.elements.length > 0){
+            node.importClause.namedBindings.elements.forEach(function (el) {
+                let elName = el.getText();
+                if (!modulesIdentifiers[elName]) {
+                    modulesIdentifiers[elName] = moduleName;
+                }
+            });
+        } else {
+            if (node.importClause && node.importClause.name) {
+                let elName = node.importClause.getText();
+                if (!modulesIdentifiers[elName]) {
+                    modulesIdentifiers[elName] = moduleName;
+                }
+            }
+        }
+    }
+
+    function isImportedIdentifier(node) {
+        return !!(modulesIdentifiers[node.getText()]);
+    }
+
+    function getComposedIdentifierName(node) {
+        let nodeName = node.getText();
+        return modulesIdentifiers[nodeName] + "_" + moduleReferencesNames[modulesIdentifiers[nodeName]] + ".";
     }
 
     function commentOutTypes(node) {
@@ -359,6 +414,16 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
+    function hasImportSpecifierDeclaration(node) {
+        if (node.declarations && node.declarations.length > 0) {
+            return node.declarations.every(function (el) {
+                if (ts.isImportSpecifier(el) || ts.isImportClause(el)) {
+                    return true
+                }
+            });
+        }
+    }
+
     function hasExportModifier(node) {
         if (node.modifiers && node.modifiers.length > 0) {
             return node.modifiers.some(function (el) {
@@ -446,6 +511,16 @@ function deTypescript(fileNames, options, code) {
         return isInsideModule(node)?node.parent.parent.name.getText():"exports";
     }
 
+    function getModuleSpecifierName(moduleSpecifier) {
+        if (moduleSpecifier) {
+            var moduleName = moduleSpecifier.text;
+            if (moduleName) {
+                var namePart = moduleName.split('/');
+                return namePart[namePart.length - 1];
+            }
+        }
+    }
+
     if (exportExists) {
         edits.push({
             pos: 0,
@@ -475,8 +550,10 @@ function applyEdits(code, remove, edits) {
                 if (edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end) {
                     edits[j].afterEnd += edits[j + 1].afterEnd;
                 }
-                edits.splice(j + 1, 1);
-                i--;
+                if (edits[j + 1].pos != 0 && edits[j + 1].end != 0) {
+                    edits.splice(j + 1, 1);
+                    i--;
+                }
             }
         }
     }
