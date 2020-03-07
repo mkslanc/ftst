@@ -181,42 +181,45 @@ function deTypescript(fileNames, options, code) {
             case (node.body && ts.isModuleDeclaration(node) && !hasDeclareModifier(node)):
                 //TODO: maybe need some checks for crazy stuff like abstract namespace Example etc
                 let moduleName = node.name.getText();
-                if (isInsideModule(node)) {
-                    let textToPaste = "let " + moduleName + "; (function (" + moduleName + ")";
-                    let parentModuleName = node.parent.parent.name.getText();
-                    edits.push({
-                        pos: node.pos + node.getLeadingTriviaWidth(),
-                        end: node.body.pos,
-                        afterEnd: textToPaste
-                    });
-                    if (hasExportModifier(node)) {
-                        textToPaste = ")(" + moduleName + " = " + parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
+                if (node.body.statements && node.body.statements.length > 0) {
+                    if (isInsideModule(node)) {
+                        let textToPaste = "let " + moduleName + "; (function (" + moduleName + ")";
+                        let parentModuleName = node.parent.parent.name.getText();
+                        edits.push({
+                            pos: node.pos + node.getLeadingTriviaWidth(),
+                            end: node.body.pos,
+                            afterEnd: textToPaste
+                        });
+                        if (hasExportModifier(node)) {
+                            textToPaste = ")(" + moduleName + " = " + parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
+                        } else {
+                            textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
+                        }
+                        edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                     } else {
+                        let textToPaste = (hasExportModifier(node)) ?
+                            "export var " + moduleName + "; (function (" + moduleName + ")" :
+                            "var " + moduleName + "; (function (" + moduleName + ")";
+                        edits.push({
+                            pos: node.pos + node.getLeadingTriviaWidth(),
+                            end: node.body.pos,
+                            afterEnd: textToPaste
+                        });
                         textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
+                        edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                     }
-                    edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+
                 } else {
-                    let textToPaste = (hasExportModifier(node)) ?
-                        "export var " + moduleName + "; (function (" + moduleName + ")" :
-                        "var " + moduleName + "; (function (" + moduleName + ")";
-                    edits.push({
-                        pos: node.pos + node.getLeadingTriviaWidth(),
-                        end: node.body.pos,
-                        afterEnd: textToPaste
-                    });
-                    textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
-                    edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                 }
                 break;
             case (ts.isEnumDeclaration(node) && !hasDeclareModifier(node)):
                 transformEnum(node);
                 break;
             case (ts.isFunctionDeclaration(node) && hasExportModifier(node)):
-                exportExists = true;
                 transformExportFunction(node);
                 break;
             case (ts.isVariableStatement(node) && hasExportModifier(node)):
-                exportExists = true;
                 transformExportVariable(node);
                 break;
             case (ts.isImportEqualsDeclaration(node)):
@@ -251,8 +254,21 @@ function deTypescript(fileNames, options, code) {
                 }
                 break;
             case (ts.isClassDeclaration(node) && hasExportModifier(node)):
-                exportExists = true;
                 transformExportClass(node);
+                break;
+            case (node.kind === ts.SyntaxKind.Constructor && node.parameters && node.parameters.length > 0):
+                if (node.body) {
+                    node.parameters.forEach(function (param) {
+                        if (hasControllingAccessModifier(param)) {
+                            let textToPaste = "this." + param.name.getText() + " = " + param.name.getText() + ";";
+                            edits.push({
+                                pos: node.body.pos + node.body.getLeadingTriviaWidth() + 1,
+                                end: node.body.pos + node.body.getLeadingTriviaWidth() + 1,
+                                afterEnd: textToPaste
+                            });
+                        }
+                    });
+                }
                 break;
         }
         commentOutTypes(node);
@@ -435,6 +451,16 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
+    function hasControllingAccessModifier(node) {
+        if (node.modifiers && node.modifiers.length > 0) {
+            return node.modifiers.some(function (el) {
+                if (el.kind == ts.SyntaxKind.PrivateKeyword || el.kind == ts.SyntaxKind.PublicKeyword || el.kind == ts.SyntaxKind.ProtectedKeyword) {
+                    return true
+                }
+            });
+        }
+    }
+
     function transformExportFunction(node) {
         let moduleName = getModuleName(node);
         var constructionName, dotPropertyName;
@@ -506,9 +532,14 @@ function deTypescript(fileNames, options, code) {
     function isInsideModule(node) {
         return (node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent));
     }
-    
+
     function getModuleName(node) {
-        return isInsideModule(node)?node.parent.parent.name.getText():"exports";
+        if (isInsideModule(node)) {
+            return node.parent.parent.name.getText();
+        } else {
+            exportExists = true;
+            return "exports";
+        }
     }
 
     function getModuleSpecifierName(moduleSpecifier) {
