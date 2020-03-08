@@ -87,6 +87,7 @@ function deTypescript(fileNames, options, code) {
     var exportExists = false;
     var moduleReferencesNames = {};
     var modulesIdentifiers = {};
+    var textToPaste;
 
     for (var _i = 0, _a = program.getSourceFiles(); _i < _a.length; _i++) {
         var sourceFile = _a[_i];
@@ -97,9 +98,23 @@ function deTypescript(fileNames, options, code) {
 
     function visit(node) {
         switch (true) {
+            case (node.flowNode && node.flowNode.node && ts.isIdentifier(node)):
+                textToPaste = findReferencedTransform(node.flowNode.node.pos + node.flowNode.node.getLeadingTriviaWidth());
+                if (textToPaste) {
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        end: node.pos + node.getLeadingTriviaWidth(),
+                        afterEnd: textToPaste.afterEnd
+                    });
+                }
+                break;
             case (ts.isExportAssignment(node)):
-                edits.push({pos: node.pos + node.getLeadingTriviaWidth()+ 6, end: node.pos + node.getLeadingTriviaWidth()+ 7, afterEnd:"s."});
-                edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd:" ="});
+                edits.push({
+                    pos: node.pos + node.getLeadingTriviaWidth() + 6,
+                    end: node.pos + node.getLeadingTriviaWidth() + 7,
+                    afterEnd: "s."
+                });
+                edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd: " ="});
                 exportExists = true;
                 break;
             case (ts.isIdentifier(node) && isImportedIdentifier(node)):
@@ -183,7 +198,7 @@ function deTypescript(fileNames, options, code) {
                 let moduleName = node.name.getText();
                 if (node.body.statements && node.body.statements.length > 0) {
                     if (isInsideModule(node)) {
-                        let textToPaste = "let " + moduleName + "; (function (" + moduleName + ")";
+                        textToPaste = "let " + moduleName + "; (function (" + moduleName + ")";
                         let parentModuleName = node.parent.parent.name.getText();
                         edits.push({
                             pos: node.pos + node.getLeadingTriviaWidth(),
@@ -197,7 +212,7 @@ function deTypescript(fileNames, options, code) {
                         }
                         edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                     } else {
-                        let textToPaste = (hasExportModifier(node)) ?
+                        textToPaste = (hasExportModifier(node)) ?
                             "export var " + moduleName + "; (function (" + moduleName + ")" :
                             "var " + moduleName + "; (function (" + moduleName + ")";
                         edits.push({
@@ -260,7 +275,7 @@ function deTypescript(fileNames, options, code) {
                 if (node.body) {
                     node.parameters.forEach(function (param) {
                         if (hasControllingAccessModifier(param)) {
-                            let textToPaste = "this." + param.name.getText() + " = " + param.name.getText() + ";";
+                            textToPaste = "this." + param.name.getText() + " = " + param.name.getText() + ";";
                             edits.push({
                                 pos: node.body.pos + node.body.getLeadingTriviaWidth() + 1,
                                 end: node.body.pos + node.body.getLeadingTriviaWidth() + 1,
@@ -488,7 +503,7 @@ function deTypescript(fileNames, options, code) {
     function transformExportClass(node) {
         let moduleName = getModuleName(node);
         var constructionName, dotPropertyName;
-        if (hasDefaultModifier(node)) {
+        if (hasDefaultModifier(node) || !node.name) {
             if (!node.name) {
                 defaultCounter++;
                 constructionName = "default_" + defaultCounter;
@@ -524,7 +539,8 @@ function deTypescript(fileNames, options, code) {
             edits.push({
                 pos: node.pos + node.getLeadingTriviaWidth(),
                 end: stopCommentPos,
-                afterEnd: textToPaste
+                afterEnd: textToPaste,
+                couldBeReference: true
             });
         }
     }
@@ -550,6 +566,12 @@ function deTypescript(fileNames, options, code) {
                 return namePart[namePart.length - 1];
             }
         }
+    }
+
+    function findReferencedTransform(endPos) {
+        return edits.find(function (el) {
+            return (el.couldBeReference && el.end === endPos)
+        });
     }
 
     if (exportExists) {
