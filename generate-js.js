@@ -98,7 +98,7 @@ function deTypescript(fileNames, options, code) {
 
     function visit(node) {
         switch (true) {
-            case (node.flowNode && node.flowNode.node && ts.isIdentifier(node)):
+            case (node.flowNode && node.flowNode.node && ts.isIdentifier(node) && node.parent && !ts.isVariableDeclaration(node.parent)):
                 textToPaste = findReferencedTransform(node.flowNode.node.pos + node.flowNode.node.getLeadingTriviaWidth());
                 if (textToPaste) {
                     edits.push({
@@ -109,13 +109,23 @@ function deTypescript(fileNames, options, code) {
                 }
                 break;
             case (ts.isExportAssignment(node)):
-                edits.push({
+                //not quite sure in this part
+                /*edits.push({
                     pos: node.pos + node.getLeadingTriviaWidth() + 6,
                     end: node.pos + node.getLeadingTriviaWidth() + 7,
                     afterEnd: "s."
                 });
                 edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd: " ="});
-                exportExists = true;
+                exportExists = true;*/
+                edits.push({
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    end: node.pos + node.getLeadingTriviaWidth(),
+                    afterEnd: "module."
+                });
+                edits.push({
+                    pos: node.pos + node.getLeadingTriviaWidth() + 6,
+                    end: node.pos + node.getLeadingTriviaWidth() + 6, afterEnd: "s"
+                });
                 break;
             case (ts.isIdentifier(node) && isImportedIdentifier(node)):
                 var symbol = sourceFile.locals.get(node.text);
@@ -240,7 +250,7 @@ function deTypescript(fileNames, options, code) {
             case (ts.isImportEqualsDeclaration(node)):
                 var textToPaste;
                 if (node.moduleReference && ts.isExternalModuleReference(node.moduleReference)) {
-                    exportExists = true;
+                    //exportExists = true;
                     textToPaste = 'const ';
                 } else {
                     if (hasExportModifier(node)) {
@@ -258,7 +268,7 @@ function deTypescript(fileNames, options, code) {
             case (ts.isImportDeclaration(node)):
                 var moduleReferenceName = getModuleSpecifierName(node.moduleSpecifier);
                 if (moduleReferenceName) {
-                    exportExists = true;
+                    //exportExists = true;
                     if (!moduleReferencesNames[moduleReferenceName]) {
                         moduleReferencesNames[moduleReferenceName] = 0;
                     }
@@ -527,20 +537,18 @@ function deTypescript(fileNames, options, code) {
     function transformExportVariable(node) {
         if (node.declarationList && node.declarationList.declarations) {
             let moduleName = getModuleName(node);
-            var i = 0;
-            while (i < node.declarationList.declarations.length) {
-                if (node.declarationList.declarations[i].pos >= node.pos && node.declarationList.declarations[i].pos <= node.end)
-                    break;
-                i++;
-            }
-            let stopCommentPos = node.declarationList.declarations[i].pos +
-                node.declarationList.declarations[i].getLeadingTriviaWidth();
-            let textToPaste = moduleName + ".";
             edits.push({
                 pos: node.pos + node.getLeadingTriviaWidth(),
-                end: stopCommentPos,
-                afterEnd: textToPaste,
-                couldBeReference: true
+                end: node.declarationList.declarations[0].pos
+            });
+            node.declarationList.declarations.forEach(function (decl) {
+                let textToPaste = moduleName + ".";
+                edits.push({
+                    pos: decl.pos + decl.getLeadingTriviaWidth(),
+                    end: decl.pos + decl.getLeadingTriviaWidth(),
+                    afterEnd: textToPaste,
+                    couldBeReference: true
+                });
             });
         }
     }
