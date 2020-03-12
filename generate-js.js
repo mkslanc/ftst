@@ -131,14 +131,6 @@ function deTypescript(fileNames, options, code) {
                     end: node.pos + node.getLeadingTriviaWidth() + 6, afterEnd: "s"
                 });
                 break;
-            case (ts.isIdentifier(node) && isImportedIdentifier(node)):
-                var symbol = sourceFile.locals.get(node.text);
-                if (symbol && hasImportSpecifierDeclaration(symbol)) {
-                    let regExp = new RegExp("[.]" + node.text);
-                    if(!regExp.test(node.parent.getText()))
-                        edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.pos + node.getLeadingTriviaWidth(), afterEnd: getComposedIdentifierName(node)});
-                }
-                break;
             case ts.isTypeAliasDeclaration(node):
             case ts.isInterfaceDeclaration(node):
             case (ts.isFunctionDeclaration(node) && !node.body):
@@ -151,7 +143,7 @@ function deTypescript(fileNames, options, code) {
             case (ts.isHeritageClause(node) && node.token && node.token == ts.SyntaxKind.ImplementsKeyword):
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
-                break;
+                return;
             case (node.kind && node.kind == ts.SyntaxKind.DeclareKeyword):
                 edits.push({pos: node.parent.pos + node.parent.getLeadingTriviaWidth(), end: node.parent.end});
                 break;
@@ -198,7 +190,7 @@ function deTypescript(fileNames, options, code) {
                 break;
             case (ts.isEnumDeclaration(node) && !hasDeclareModifier(node)):
                 transformEnum(node);
-                break;
+                return;
             case (ts.isFunctionDeclaration(node) && hasExportModifier(node)):
                 transformExportFunction(node);
                 break;
@@ -298,13 +290,25 @@ function deTypescript(fileNames, options, code) {
     }
 
     function isDuplicatedDeclaration(node) {
-        if (node.symbol && node.symbol.declarations.length > 1) {
-            let index = node.symbol.declarations.findIndex(function (el, index) {
+        var currentSymbol;
+        if (node.localSymbol && node.localSymbol.declarations.length > 0) {
+            currentSymbol = node.localSymbol;
+        } else if (node.symbol && node.symbol.declarations.length > 1) {
+            currentSymbol = node.symbol;
+        }
+        if (currentSymbol) {
+            let index = currentSymbol.declarations.findIndex(function (el, index) {
                 if (node.pos === el.pos && node.end === el.end) {
                     return index;
                 }
             });
-            if (index > 0)
+            let duplCounter = index;
+            for (var i = 0; i < index; i++) {
+                if (isExcludedFromSource(currentSymbol.declarations[i])) {
+                    duplCounter--;
+                }
+            }
+            if (duplCounter > 0)
                 return true;
         }
     }
@@ -630,6 +634,14 @@ function deTypescript(fileNames, options, code) {
     function findReferencedTransform(endPos) {
         return edits.find(function (el) {
             return (el.couldBeReference && el.pos === endPos)
+        });
+    }
+
+    function isExcludedFromSource(node) {
+        return edits.some(function (el) {
+            if (el.pos == node.pos + node.getLeadingTriviaWidth() && el.end == node.end) {
+                return true;
+            }
         });
     }
 
