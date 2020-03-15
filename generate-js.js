@@ -85,6 +85,7 @@ function deTypescript(fileNames, options, code) {
     var edits = [];
     var defaultCounter = 0;
     var exportExists = false;
+    var moduleExportExists = false;
     var moduleReferencesNames = {};
     var modulesIdentifiers = {};
     var textToPaste;
@@ -113,23 +114,42 @@ function deTypescript(fileNames, options, code) {
                 }
                 break;
             case (ts.isExportAssignment(node)):
-                //not quite sure in this part
-                /*edits.push({
-                    pos: node.pos + node.getLeadingTriviaWidth() + 6,
-                    end: node.pos + node.getLeadingTriviaWidth() + 7,
-                    afterEnd: "s."
-                });
-                edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd: " ="});
-                exportExists = true;*/
-                edits.push({
-                    pos: node.pos + node.getLeadingTriviaWidth(),
-                    end: node.pos + node.getLeadingTriviaWidth(),
-                    afterEnd: "module."
-                });
-                edits.push({
-                    pos: node.pos + node.getLeadingTriviaWidth() + 6,
-                    end: node.pos + node.getLeadingTriviaWidth() + 6, afterEnd: "s"
-                });
+                if (node.isExportEquals && node.isExportEquals == true) {
+                    let symbol = checker.getSymbolAtLocation(node.expression);
+                    if (symbol && symbol.valueDeclaration) {
+                        //single module export allowed
+                        if (moduleExportExists === true) {
+                            edits.push({
+                                pos: node.pos + node.getLeadingTriviaWidth(),
+                                end: node.end
+                            });
+                        } else {
+                            moduleExportExists = true;
+                            edits.push({
+                                pos: node.pos + node.getLeadingTriviaWidth(),
+                                end: node.pos + node.getLeadingTriviaWidth(),
+                                afterEnd: "module."
+                            });
+                            edits.push({
+                                pos: node.pos + node.getLeadingTriviaWidth() + 6,
+                                end: node.pos + node.getLeadingTriviaWidth() + 6, afterEnd: "s"
+                            });
+                        }
+                    } else {
+                        edits.push({
+                            pos: node.pos + node.getLeadingTriviaWidth(),
+                            end: node.end
+                        });
+                    }
+                } else {
+                    exportExists = true;
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth() + 6,
+                        end: node.pos + node.getLeadingTriviaWidth() + 7,
+                        afterEnd: "s."
+                    });
+                    edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd: " ="});
+                }
                 break;
             case ts.isTypeAliasDeclaration(node):
             case ts.isInterfaceDeclaration(node):
@@ -144,9 +164,9 @@ function deTypescript(fileNames, options, code) {
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                 return;
-            case (node.kind && node.kind == ts.SyntaxKind.DeclareKeyword):
-                edits.push({pos: node.parent.pos + node.parent.getLeadingTriviaWidth(), end: node.parent.end});
-                break;
+            case (hasDeclareModifier(node)):
+                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+                return;
             case (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node)):
                 var className;
                 if (hasDefaultModifier(node.parent) && !node.parent.name) {
@@ -219,7 +239,7 @@ function deTypescript(fileNames, options, code) {
             case (ts.isImportDeclaration(node)):
                 var moduleReferenceName = getModuleSpecifierName(node.moduleSpecifier);
                 if (moduleReferenceName) {
-                    //exportExists = true;
+                    exportExists = true;
                     if (!moduleReferencesNames[moduleReferenceName]) {
                         moduleReferencesNames[moduleReferenceName] = 0;
                     }
@@ -269,7 +289,9 @@ function deTypescript(fileNames, options, code) {
     }
 
     function isAlreadyReferenced(node, parentText) {
-        return (parentText + node.getText() == node.parent.getText());
+        //TODO: bad code, need to improve in future
+        let parent = node.parent.getText();
+        return parent.search(parentText + node.getText()) > -1;
     }
 
     function isTheSameStatement(node, symbol) {
@@ -366,10 +388,13 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
-    function hasDeclareModifier(node) {
+    function hasDeclareModifier(node, commentOut = false) {
         if (node.modifiers && node.modifiers.length > 0) {
             return node.modifiers.some(function (el) {
                 if (el.kind == ts.SyntaxKind.DeclareKeyword) {
+                    if (commentOut === true) {
+                        edits.push({pos: el.pos + el.getLeadingTriviaWidth(), end: el.end});
+                    }
                     return true
                 }
             });
@@ -645,7 +670,7 @@ function deTypescript(fileNames, options, code) {
         });
     }
 
-    if (exportExists) {
+    if (exportExists && !moduleExportExists) {
         edits.push({
             pos: 0,
             end: 0,
