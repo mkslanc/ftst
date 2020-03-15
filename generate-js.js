@@ -251,8 +251,33 @@ function deTypescript(fileNames, options, code) {
                     edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
                 }
                 break;
+            case (ts.isExportDeclaration(node)):
+                //TODO: need to test with import declaration
+                exportExists = true;
+                if (node.exportClause && node.exportClause.elements && node.exportClause.elements.length > 0) {
+                    var moduleReferenceName = getModuleSpecifierName(node.moduleSpecifier);
+                    if (moduleReferenceName) {
+                        if (!moduleReferencesNames[moduleReferenceName]) {
+                            moduleReferencesNames[moduleReferenceName] = 0;
+                        }
+                        moduleReferencesNames[moduleReferenceName]++;
+                        setExportedIdentifiers(node, moduleReferenceName);
+                        textToPaste = "var " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
+                        edits.push({
+                            pos: node.pos + node.getLeadingTriviaWidth(),
+                            end: node.end,
+                            afterEnd: textToPaste
+                        });
+                    } else {
+                        setExportedIdentifiers(node);
+                        edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+                    }
+                } else {
+                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+                }
+                break;
             case (ts.isClassDeclaration(node)):
-                if (decorators && decorators.length) {
+                if (node.decorators && node.decorators.length) {
                     var className = node.name.getText();
                     let afterEnd = "let " + className + "= ";
                     edits.push({
@@ -402,13 +427,29 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
+    function setExportedIdentifiers(node, moduleName) {
+        node.exportClause.elements.forEach(function (el) {
+            let elPropertyName = (el.propertyName) ? el.propertyName.getText() : el.name.getText();
+            let elName = el.name.getText();
+            let text;
+            if (moduleName) {
+                if (!modulesIdentifiers[elName]) {
+                    modulesIdentifiers[elName] = moduleName;
+                }
+                text = "exports." + elName + " = " + getComposedIdentifierName(elPropertyName) + elPropertyName + ";";
+            } else {
+                text = "exports." + elName + " = " + elPropertyName + ";";
+            }
+            edits.push({pos: node.end, end: node.end, afterEnd: text});
+        });
+    }
+
     function isImportedIdentifier(node) {
         return !!(modulesIdentifiers[node.getText()]);
     }
 
-    function getComposedIdentifierName(node) {
-        let nodeName = node.getText();
-        return modulesIdentifiers[nodeName] + "_" + moduleReferencesNames[modulesIdentifiers[nodeName]] + ".";
+    function getComposedIdentifierName(name) {
+        return modulesIdentifiers[name] + "_" + moduleReferencesNames[modulesIdentifiers[name]] + ".";
     }
 
     function commentOutTypes(node) {
