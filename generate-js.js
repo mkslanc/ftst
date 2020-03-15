@@ -160,6 +160,8 @@ function deTypescript(fileNames, options, code) {
             case (node.kind && node.kind == ts.SyntaxKind.ProtectedKeyword):
             case (node.kind && node.kind == ts.SyntaxKind.ReadonlyKeyword):
             case (node.kind && node.kind == ts.SyntaxKind.AbstractKeyword):
+            case ((ts.isGetAccessor(node) || ts.isSetAccessor(node)) && !node.body):
+            case (node.kind && node.kind == ts.SyntaxKind.Constructor && !node.body):
             case (ts.isHeritageClause(node) && node.token && node.token == ts.SyntaxKind.ImplementsKeyword):
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
@@ -268,15 +270,19 @@ function deTypescript(fileNames, options, code) {
                 if (hasExportModifier(node)) {
                     transformExportClass(node);
                 }
+                if (node.heritageClauses && node.heritageClauses.length > 0) {
+                    addMissedSuper(node);
+                }
                 break;
             case (node.kind === ts.SyntaxKind.Constructor && node.parameters && node.parameters.length > 0):
                 if (node.body) {
+                    let parameterPos = getPositionForParameters(node.body);
                     node.parameters.forEach(function (param) {
                         if (hasControllingAccessModifier(param)) {
                             textToPaste = "this." + param.name.getText() + " = " + param.name.getText() + ";";
                             edits.push({
-                                pos: node.body.pos + node.body.getLeadingTriviaWidth() + 1,
-                                end: node.body.pos + node.body.getLeadingTriviaWidth() + 1,
+                                pos: parameterPos,
+                                end: parameterPos,
                                 afterEnd: textToPaste
                             });
                         }
@@ -286,6 +292,49 @@ function deTypescript(fileNames, options, code) {
         }
         commentOutTypes(node);
         ts.forEachChild(node, visit);
+    }
+
+    function addMissedSuper(node) {
+        if (node.members && node.members.length > 0) {
+            let constructorNode = getConstructor(node);
+            if (constructorNode) {
+                if (constructorNode.body) {
+                    let superKey = hasSuperKeyword(constructorNode.body);
+                    if (!superKey) {
+                        edits.push({
+                            pos: constructorNode.body.pos + 1,
+                            end: constructorNode.body.pos + 1,
+                            afterEnd: "super(...arguments);"
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    function getConstructor(node) {
+        return node.members.find(function (el) {
+            if (el.kind === ts.SyntaxKind.Constructor) {
+                return el;
+            }
+        })
+    }
+
+    function getPositionForParameters(node) {
+        let superKey = hasSuperKeyword(node);
+        if (superKey)
+            return superKey.end;
+        return node.pos + node.getLeadingTriviaWidth() + 1;
+    }
+
+    function hasSuperKeyword(node) {
+        if (node.statements && node.statements.length > 0) {
+            return node.statements.find(function (el) {
+                if (el.expression && el.expression.expression && el.expression.expression.kind === ts.SyntaxKind.SuperKeyword) {
+                    return el;
+                }
+            });
+        }
     }
 
     function isAlreadyReferenced(node, parentText) {
@@ -363,7 +412,7 @@ function deTypescript(fileNames, options, code) {
     }
 
     function commentOutTypes(node) {
-        if (node.type) {
+        if (node.type) {//TODO: super type arguments which is not parsed in node tree
             var pos, end;
             if (ts.isAsExpression(node) || (node.questionToken)) {
                 pos = node.type.pos - 2;
