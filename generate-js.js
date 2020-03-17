@@ -83,6 +83,7 @@ function deTypescript(fileNames, options, code) {
     var program = ts.createProgram(fileNames, options, host);
     var checker = program.getTypeChecker();
     var edits = [];
+    var refParents = [];
     var defaultCounter = 0;
     var exportExists = false;
     var moduleExportExists = false;
@@ -223,7 +224,11 @@ function deTypescript(fileNames, options, code) {
                 var textToPaste;
                 if (node.moduleReference && ts.isExternalModuleReference(node.moduleReference)) {
                     exportExists = true;
-                    textToPaste = 'const ';
+                    if (hasExportModifier(node)) {
+                        textToPaste = getModuleName(node) + '.';
+                    } else {
+                        textToPaste = 'const ';
+                    }
                 } else {
                     if (hasExportModifier(node)) {
                         textToPaste = getModuleName(node) + '.';
@@ -231,23 +236,31 @@ function deTypescript(fileNames, options, code) {
                         textToPaste = 'var '
                     }
                 }
+                refParents.push({
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    afterEnd: textToPaste
+                });
                 edits.push({
                     pos: node.pos + node.getLeadingTriviaWidth(),
                     end: node.name.pos + 1,
-                    afterEnd: textToPaste,
-                    couldBeReference: true
+                    afterEnd: textToPaste
                 });
                 break;
             case (ts.isImportDeclaration(node)):
-                var moduleReferenceName = getModuleSpecifierName(node.moduleSpecifier);
-                if (moduleReferenceName) {
+                var moduleReferenceName = getModuleSpecifierName(node);
+                if (moduleReferenceName != undefined) {
                     exportExists = true;
-                    if (!moduleReferencesNames[moduleReferenceName]) {
-                        moduleReferencesNames[moduleReferenceName] = 0;
+                    if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.name) {
+                        moduleReferenceName = node.importClause.namedBindings.name.getText();
+                        textToPaste = "const " + moduleReferenceName + " = require(\"" + node.moduleSpecifier.text + "\");";
+                    } else {
+                        if (!moduleReferencesNames[moduleReferenceName]) {
+                            moduleReferencesNames[moduleReferenceName] = 0;
+                        }
+                        moduleReferencesNames[moduleReferenceName]++;
+                        textToPaste = "const " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
                     }
-                    moduleReferencesNames[moduleReferenceName]++;
                     setImportedIdentifiers(node, moduleReferenceName);
-                    textToPaste = "const " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
                     edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
                 }
                 break;
@@ -255,8 +268,8 @@ function deTypescript(fileNames, options, code) {
                 //TODO: need to test with import declaration
                 exportExists = true;
                 if (node.exportClause && node.exportClause.elements && node.exportClause.elements.length > 0) {
-                    var moduleReferenceName = getModuleSpecifierName(node.moduleSpecifier);
-                    if (moduleReferenceName) {
+                    var moduleReferenceName = getModuleSpecifierName(node);
+                    if (moduleReferenceName != undefined) {
                         if (!moduleReferencesNames[moduleReferenceName]) {
                             moduleReferencesNames[moduleReferenceName] = 0;
                         }
@@ -268,7 +281,7 @@ function deTypescript(fileNames, options, code) {
                             end: node.end,
                             afterEnd: textToPaste
                         });
-                    } else {
+                    } else {//TODO: checker.getSymbolAtLocation(node.exportClause.elements[0].propertyName)
                         setExportedIdentifiers(node);
                         edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                     }
@@ -295,7 +308,7 @@ function deTypescript(fileNames, options, code) {
                 if (hasExportModifier(node)) {
                     transformExportClass(node);
                 }
-                if (node.heritageClauses && node.heritageClauses.length > 0) {
+                if (hasExtendsHeritage(node)) {
                     addMissedSuper(node);
                 }
                 break;
@@ -319,6 +332,12 @@ function deTypescript(fileNames, options, code) {
         ts.forEachChild(node, visit);
     }
 
+    function hasExtendsHeritage(node) {
+        return node.heritageClauses && node.heritageClauses.some(function (el) {
+            return (el.token && el.token == ts.SyntaxKind.ExtendsKeyword);
+        });
+    }
+
     function addMissedSuper(node) {
         if (node.members && node.members.length > 0) {
             let constructorNode = getConstructor(node);
@@ -327,8 +346,8 @@ function deTypescript(fileNames, options, code) {
                     let superKey = hasSuperKeyword(constructorNode.body);
                     if (!superKey) {
                         edits.push({
-                            pos: constructorNode.body.pos + 1,
-                            end: constructorNode.body.pos + 1,
+                            pos: constructorNode.body.statements.pos,
+                            end: constructorNode.body.statements.pos,
                             afterEnd: "super(...arguments);"
                         });
                     }
@@ -412,17 +431,21 @@ function deTypescript(fileNames, options, code) {
     function setImportedIdentifiers(node, moduleName) {
         if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.elements && node.importClause.namedBindings.elements.length > 0){
             node.importClause.namedBindings.elements.forEach(function (el) {
-                let elName = el.getText();
-                if (!modulesIdentifiers[elName]) {
+                let elName = el.name.getText();
+                /*if (!modulesIdentifiers[elName]) {
                     modulesIdentifiers[elName] = moduleName;
-                }
+                }*/
+                refParents.push({
+                    pos: el.pos + el.getLeadingTriviaWidth(),
+                    afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".",
+                });
             });
         } else {
             if (node.importClause && node.importClause.name) {
                 let elName = node.importClause.getText();
-                if (!modulesIdentifiers[elName]) {
+                /*if (!modulesIdentifiers[elName]) {
                     modulesIdentifiers[elName] = moduleName;
-                }
+                }*/
             }
         }
     }
@@ -433,10 +456,10 @@ function deTypescript(fileNames, options, code) {
             let elName = el.name.getText();
             let text;
             if (moduleName) {
-                if (!modulesIdentifiers[elName]) {
+                /*if (!modulesIdentifiers[elName]) {
                     modulesIdentifiers[elName] = moduleName;
-                }
-                text = "exports." + elName + " = " + getComposedIdentifierName(elPropertyName) + elPropertyName + ";";
+                }*/
+                text = "exports." + elName + " = " + getComposedReferenceName(moduleName) + elPropertyName + ";";
             } else {
                 text = "exports." + elName + " = " + elPropertyName + ";";
             }
@@ -448,8 +471,8 @@ function deTypescript(fileNames, options, code) {
         return !!(modulesIdentifiers[node.getText()]);
     }
 
-    function getComposedIdentifierName(name) {
-        return modulesIdentifiers[name] + "_" + moduleReferencesNames[modulesIdentifiers[name]] + ".";
+    function getComposedReferenceName(moduleName) {
+        return moduleName + "_" + moduleReferencesNames[moduleName] + ".";
     }
 
     function commentOutTypes(node) {
@@ -713,11 +736,14 @@ function deTypescript(fileNames, options, code) {
             });
             node.declarationList.declarations.forEach(function (decl) {
                 let textToPaste = moduleName + ".";
+                refParents.push({
+                    pos: decl.pos + decl.getLeadingTriviaWidth(),
+                    afterEnd: textToPaste,
+                });
                 edits.push({
                     pos: decl.pos + decl.getLeadingTriviaWidth(),
                     end: decl.pos + decl.getLeadingTriviaWidth(),
-                    afterEnd: textToPaste,
-                    couldBeReference: true
+                    afterEnd: textToPaste
                 });
             });
         }
@@ -736,19 +762,20 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
-    function getModuleSpecifierName(moduleSpecifier) {
-        if (moduleSpecifier) {
-            var moduleName = moduleSpecifier.text;
-            if (moduleName) {
-                var namePart = moduleName.split('/');
-                return namePart[namePart.length - 1];
+    function getModuleSpecifierName(node) {
+        if (node.moduleSpecifier) {
+            var moduleName = node.moduleSpecifier.text;
+            if (moduleName != undefined) {
+                let namePart = moduleName.split('/');
+                let modName = namePart[namePart.length - 1];
+                return (/[^a-zA-Z]/.test(modName[0])) ? "_" + modName : modName;
             }
         }
     }
 
     function findReferencedTransform(endPos) {
-        return edits.find(function (el) {
-            return (el.couldBeReference && el.pos === endPos)
+        return refParents.find(function (el) {
+            return (el.pos === endPos)
         });
     }
 
