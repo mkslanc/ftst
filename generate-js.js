@@ -108,7 +108,7 @@ function deTypescript(fileNames, options, code) {
                     if (textToPaste && textToPaste.afterEnd != "var " && textToPaste.afterEnd != "const " && !isAlreadyReferenced(node, textToPaste.afterEnd)) {
                         edits.push({
                             pos: node.pos + node.getLeadingTriviaWidth(),
-                            end: node.pos + node.getLeadingTriviaWidth(),
+                            end: (textToPaste.replace) ? node.end : node.pos + node.getLeadingTriviaWidth(),
                             afterEnd: textToPaste.afterEnd
                         });
                     }
@@ -254,11 +254,15 @@ function deTypescript(fileNames, options, code) {
                         moduleReferenceName = node.importClause.namedBindings.name.getText();
                         textToPaste = "const " + moduleReferenceName + " = require(\"" + node.moduleSpecifier.text + "\");";
                     } else {
-                        if (!moduleReferencesNames[moduleReferenceName]) {
-                            moduleReferencesNames[moduleReferenceName] = 0;
+                        if (node.importClause) {
+                            if (!moduleReferencesNames[moduleReferenceName]) {
+                                moduleReferencesNames[moduleReferenceName] = 0;
+                            }
+                            moduleReferencesNames[moduleReferenceName]++;
+                            textToPaste = "const " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
+                        } else {
+                            textToPaste = "require(\"" + node.moduleSpecifier.text + "\");";
                         }
-                        moduleReferencesNames[moduleReferenceName]++;
-                        textToPaste = "const " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
                     }
                     setImportedIdentifiers(node, moduleReferenceName);
                     edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
@@ -435,10 +439,18 @@ function deTypescript(fileNames, options, code) {
                 /*if (!modulesIdentifiers[elName]) {
                     modulesIdentifiers[elName] = moduleName;
                 }*/
-                refParents.push({
-                    pos: el.pos + el.getLeadingTriviaWidth(),
-                    afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".",
-                });
+                if (el.propertyName && el.propertyName.getText() == "default") {
+                    refParents.push({
+                        pos: el.pos + el.getLeadingTriviaWidth(),
+                        afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".default",
+                        replace: true
+                    });
+                } else {
+                    refParents.push({
+                        pos: el.pos + el.getLeadingTriviaWidth(),
+                        afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".",
+                    });
+                }
             });
         } else {
             if (node.importClause && node.importClause.name) {
@@ -446,6 +458,11 @@ function deTypescript(fileNames, options, code) {
                 /*if (!modulesIdentifiers[elName]) {
                     modulesIdentifiers[elName] = moduleName;
                 }*/
+                refParents.push({
+                    pos: node.importClause.name.pos + node.importClause.name.getLeadingTriviaWidth(),
+                    afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".default",
+                    replace: true
+                });
             }
         }
     }
@@ -685,7 +702,7 @@ function deTypescript(fileNames, options, code) {
         if (hasDefaultModifier(node)) {
             if (!node.name) {
                 defaultCounter++;
-                constructionName = "default_" + defaultCounter;
+                constructionName = " default_" + defaultCounter;
                 edits.push({
                     pos: node.parameters.pos - 1,
                     end: node.parameters.pos - 1,
