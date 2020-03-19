@@ -562,7 +562,11 @@ function deTypescript(fileNames, options, code) {
 
     function transformModule(node) {
         let moduleName = node.name.getText();
-        if (node.body.statements && node.body.statements.length > 0) {
+        let nestedModule = node;
+        while (nestedModule.body.name) {
+            nestedModule = nestedModule.body;
+        }
+        if (nestedModule.body.statements && nestedModule.body.statements.length > 0) {
             if (hasExportModifier(node)) {
                 let parentModuleName = getModuleName(node);
                 textToPaste = isDuplicatedDeclaration(node) ?
@@ -577,19 +581,39 @@ function deTypescript(fileNames, options, code) {
                 });
                 textToPaste = ")(" + moduleName + " = " + parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
             } else {
-                textToPaste = isDuplicatedDeclaration(node) ?
-                    "(function (" + moduleName + ")" :
-                    (isInsideModule(node)) ?
-                        "let " + moduleName + ";(function (" + moduleName + ")" :
-                        "var " + moduleName + ";(function (" + moduleName + ")";
-                edits.push({
-                    pos: node.pos + node.getLeadingTriviaWidth(),
-                    end: node.body.pos,
-                    afterEnd: textToPaste
-                });
-                textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
+                if (isDottedModule(node)) {
+                    let parentModuleName = node.parent.name.getText();
+                    textToPaste = "{var " + moduleName + ";(function (" + moduleName + ")";
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        end: node.body.pos,
+                        afterEnd: textToPaste
+                    });
+                    textToPaste = ")(" + moduleName + " = " + parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
+                } else {
+                    textToPaste = isDuplicatedDeclaration(node) ?
+                        "(function (" + moduleName + ")" :
+                        (isInsideModule(node)) ?
+                            "let " + moduleName + ";(function (" + moduleName + ")" :
+                            "var " + moduleName + ";(function (" + moduleName + ")";
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        end: node.body.pos,
+                        afterEnd: textToPaste
+                    });
+                    textToPaste = ")(" + moduleName + " || (" + moduleName + " = {}));";
+                }
             }
-            edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+            if (edits[edits.length - 2] && edits[edits.length - 2].pos == node.end && edits[edits.length - 2].end == node.end) {
+                edits.push({
+                    pos: node.end,
+                    end: node.end,
+                    afterEnd: textToPaste + '}' + edits[edits.length - 2].afterEnd
+                });
+                edits[edits.length - 3].afterEnd = '';
+            } else {
+                edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+            }
         } else {
             edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
         }
@@ -764,6 +788,10 @@ function deTypescript(fileNames, options, code) {
                 });
             });
         }
+    }
+
+    function isDottedModule(node) {
+        return (node.parent && ts.isModuleDeclaration(node.parent));
     }
 
     function isInsideModule(node) {
