@@ -87,6 +87,7 @@ function deTypescript(fileNames, options, code) {
     var defaultCounter = 0;
     var exportExists = false;
     var moduleExportExists = false;
+    var exportWrapperExists = false;
     var moduleReferencesNames = {};
     var modulesIdentifiers = {};
     var textToPaste;
@@ -313,7 +314,13 @@ function deTypescript(fileNames, options, code) {
                         edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                     }
                 } else {
-                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+                    if (node.moduleSpecifier) {
+                        exportWrapperExists = true;
+                        textToPaste = '__export(require(' + node.moduleSpecifier.getText() + "));";
+                    } else {
+                        textToPaste = '';
+                    }
+                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
                 }
                 break;
             case (ts.isClassDeclaration(node)):
@@ -877,7 +884,13 @@ function deTypescript(fileNames, options, code) {
             afterEnd: "Object.defineProperty(exports, \"__esModule\", { value: true });"
         });
     }
-
+    if (exportWrapperExists) {
+        edits.push({
+            pos: 0,
+            end: 0,
+            afterEnd: "function __export(m) { for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];}"
+        });
+    }
     return edits;
 }
 
@@ -896,10 +909,10 @@ function applyEdits(code, remove, edits) {
     for (var i = 1; i < edits.length; i++) {
         for (var j = i - 1; j >= 0; j--) {
             if (edits[j + 1].pos >= edits[j].pos && edits[j + 1].end <= edits[j].end) {
-                if (edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end) {
-                    edits[j].afterEnd += edits[j + 1].afterEnd;
-                }
                 if (edits[j + 1].pos != 0 && edits[j + 1].end != 0) {
+                    if (edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end) {
+                        edits[j].afterEnd += edits[j + 1].afterEnd;
+                    }
                     edits.splice(j + 1, 1);
                     i--;
                 }
