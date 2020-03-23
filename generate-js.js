@@ -428,12 +428,20 @@ function deTypescript(fileNames, options, code) {
     }
 
     function findReferencedDeclaration(symbol) {
-        if (symbol.declarations) {
-            for (var i = 0; i < symbol.declarations.length; i++) {
-                let transform = findReferencedTransform(symbol.declarations[i].pos + symbol.declarations[i].getLeadingTriviaWidth());
-                if (transform) {
-                    transform.used = true;
-                    return transform;
+        if (symbol.valueDeclaration) {//priority for value declaration
+            let transform = findReferencedTransform(symbol.valueDeclaration.pos + symbol.valueDeclaration.getLeadingTriviaWidth());
+            if (transform) {
+                transform.used = true;
+                return transform;
+            }
+        } else {
+            if (symbol.declarations) {
+                for (var i = 0; i < symbol.declarations.length; i++) {
+                    let transform = findReferencedTransform(symbol.declarations[i].pos + symbol.declarations[i].getLeadingTriviaWidth());
+                    if (transform) {
+                        transform.used = true;
+                        return transform;
+                    }
                 }
             }
         }
