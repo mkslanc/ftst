@@ -250,22 +250,45 @@ function deTypescript(fileNames, options, code) {
                 var moduleReferenceName = getModuleSpecifierName(node);
                 if (moduleReferenceName != undefined) {
                     exportExists = true;
-                    if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.name) {
-                        moduleReferenceName = node.importClause.namedBindings.name.getText();
-                        textToPaste = "const " + moduleReferenceName + " = require(\"" + node.moduleSpecifier.text + "\");";
-                    } else {
-                        if (node.importClause) {
+                    if (node.importClause) {
+                        if (node.importClause.name || (node.importClause.namedBindings && node.importClause.namedBindings.elements)) {
                             if (!moduleReferencesNames[moduleReferenceName]) {
                                 moduleReferencesNames[moduleReferenceName] = 0;
                             }
                             moduleReferencesNames[moduleReferenceName]++;
                             textToPaste = "const " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
-                        } else {
-                            textToPaste = "require(\"" + node.moduleSpecifier.text + "\");";
+                            edits.push({
+                                pos: node.end,
+                                end: node.end,
+                                aliasEnd: node.importClause.pos,
+                                afterEnd: textToPaste
+                            });
                         }
+                        if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.name) {
+                            let moduleReferenceNameBinding = node.importClause.namedBindings.name.getText();
+                            textToPaste = "const " + moduleReferenceNameBinding + " = require(\"" + node.moduleSpecifier.text + "\");";
+                            refParents.push({
+                                pos: node.importClause.namedBindings.pos + node.importClause.namedBindings.getLeadingTriviaWidth(),
+                                aliasEnd: node.importClause.namedBindings.name.pos,
+                                afterEnd: "",
+                                moduleName: moduleReferenceNameBinding
+                            });
+                            edits.push({
+                                pos: node.end,
+                                end: node.end,
+                                aliasEnd: node.importClause.namedBindings.name.pos,
+                                afterEnd: textToPaste
+                            });
+                        }
+                    } else {
+                        textToPaste = "require(\"" + node.moduleSpecifier.text + "\");";
+                        edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                     }
                     setImportedIdentifiers(node, moduleReferenceName);
-                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        end: node.end
+                    });
                 }
                 break;
             case (ts.isExportDeclaration(node)):
@@ -402,6 +425,7 @@ function deTypescript(fileNames, options, code) {
             for (var i = 0; i < symbol.declarations.length; i++) {
                 let transform = findReferencedTransform(symbol.declarations[i].pos + symbol.declarations[i].getLeadingTriviaWidth());
                 if (transform) {
+                    transform.used = true;
                     return transform;
                 }
             }
@@ -433,38 +457,36 @@ function deTypescript(fileNames, options, code) {
     }
 
     function setImportedIdentifiers(node, moduleName) {
-        if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.elements && node.importClause.namedBindings.elements.length > 0){
+        if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.elements && node.importClause.namedBindings.elements.length > 0) {
             node.importClause.namedBindings.elements.forEach(function (el) {
-                let elName = el.name.getText();
-                /*if (!modulesIdentifiers[elName]) {
-                    modulesIdentifiers[elName] = moduleName;
-                }*/
-                if (el.propertyName && el.propertyName.getText() == "default") {
+                if (el.propertyName) {
                     refParents.push({
                         pos: el.pos + el.getLeadingTriviaWidth(),
-                        afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".default",
-                        replace: true
+                        aliasEnd: node.importClause.pos,
+                        afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + "." + el.propertyName.getText(),
+                        replace: true,
+                        moduleName: moduleName + "_" + moduleReferencesNames[moduleName]
                     });
                 } else {
                     refParents.push({
                         pos: el.pos + el.getLeadingTriviaWidth(),
+                        aliasEnd: node.importClause.pos,
                         afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".",
+                        moduleName: moduleName + "_" + moduleReferencesNames[moduleName]
                     });
                 }
             });
-        } else {
-            if (node.importClause && node.importClause.name) {
-                let elName = node.importClause.getText();
-                /*if (!modulesIdentifiers[elName]) {
-                    modulesIdentifiers[elName] = moduleName;
-                }*/
-                refParents.push({
-                    pos: node.importClause.name.pos + node.importClause.name.getLeadingTriviaWidth(),
-                    afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".default",
-                    replace: true
-                });
-            }
         }
+        if (node.importClause && node.importClause.name) {
+            refParents.push({
+                pos: node.importClause.name.pos + node.importClause.name.getLeadingTriviaWidth(),
+                aliasEnd: node.importClause.name.pos,
+                afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".default",
+                replace: true,
+                moduleName: moduleName + "_" + moduleReferencesNames[moduleName]
+            });
+        }
+
     }
 
     function setExportedIdentifiers(node, moduleName) {
@@ -832,6 +854,22 @@ function deTypescript(fileNames, options, code) {
         });
     }
 
+    function commentOutUnusedDeclarations() {
+        refParents.forEach(function (el) {
+            let aliasUsed = refParents.some(function (alias) {
+                return (alias.moduleName && el.moduleName == alias.moduleName && alias.used);
+            });
+            if (!el.used && !aliasUsed) {
+                let currentEdit = edits.find(function (edit) {
+                    return (edit.aliasEnd && edit.aliasEnd == el.aliasEnd);
+                });
+                if (currentEdit)
+                    currentEdit.afterEnd = '';
+            }
+        });
+    }
+
+    commentOutUnusedDeclarations();
     if (exportExists && !moduleExportExists) {
         edits.push({
             pos: 0,
