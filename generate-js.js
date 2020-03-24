@@ -183,7 +183,7 @@ function deTypescript(fileNames, options, code) {
                 var constructionName = node.name.getText();
                 if (node.decorators && node.decorators.length) {
                     edits.push({pos: node.decorators.pos, end: node.decorators.end});
-                    var decorators = "__decorate([";
+                    var decorators = ";__decorate([";
                     for (var i = 0; i < node.decorators.length; i++) {
                         decorators += node.decorators[i].expression.getText() + ",";
                     }
@@ -195,13 +195,13 @@ function deTypescript(fileNames, options, code) {
                         }
                         decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
                     }
-                    edits.push({pos: node.parent.end, end: node.parent.end, afterEnd: decorators});
+                    edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
                 } else {
                     if (hasParametersDecorators(node)) {
-                        var decorators = "__decorate([";
+                        var decorators = ";__decorate([";
                         decorators += commentOutParametersDecorators(node);
                         decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
-                        edits.push({pos: node.parent.end, end: node.parent.end, afterEnd: decorators});
+                        edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
                     }
                 }
                 if (ts.isPropertyDeclaration(node) && !node.initializer) {
@@ -337,7 +337,7 @@ function deTypescript(fileNames, options, code) {
                         decorators += node.decorators[i].expression.getText() + ",";
                     }
                     decorators = decorators.slice(0, -1) + "], " + className + ");";
-                    edits.push({pos: node.end, end: node.end, afterEnd: decorators});
+                    edits.push({pos: node.end, end: node.end, order: 1, afterEnd: decorators});
                 }
                 if (hasExportModifier(node)) {
                     transformExportClass(node);
@@ -510,9 +510,6 @@ function deTypescript(fileNames, options, code) {
             let elName = el.name.getText();
             let text;
             if (moduleName) {
-                /*if (!modulesIdentifiers[elName]) {
-                    modulesIdentifiers[elName] = moduleName;
-                }*/
                 text = "exports." + elName + " = " + getComposedReferenceName(moduleName) + elPropertyName + ";";
             } else {
                 text = "exports." + elName + " = " + elPropertyName + ";";
@@ -801,8 +798,8 @@ function deTypescript(fileNames, options, code) {
             constructionName = node.name.getText();
             dotPropertyName = constructionName;
         }
-        let textToPaste = moduleName + "." + dotPropertyName + " = " + constructionName + ";";
-        edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+        let textToPaste = ";" + moduleName + "." + dotPropertyName + " = " + constructionName + ";";
+        edits.push({pos: node.end, end: node.end, order: 2, afterEnd: textToPaste});
     }
 
     function transformExportVariable(node) {
@@ -912,7 +909,7 @@ function applyEditsToFile(filename, edits) {
 function applyEdits(code, remove, edits) {
     var start = code;
     var end = "";
-    edits.sort((a, b) => b.end - a.end);
+    edits.sort((a, b) => b.end - a.end || a.order - b.order);
 
     for (var i = 1; i < edits.length; i++) {
         for (var j = i - 1; j >= 0; j--) {
@@ -943,6 +940,7 @@ function applyEdits(code, remove, edits) {
         start = start.slice(0, edit.pos)
     });
     end = start + end;
+    end = end.replace(/[;]+/g, ";");//normalize amount of ;
     return end;
 }
 
