@@ -336,6 +336,13 @@ function deTypescript(fileNames, options, code) {
                     for (var i = 0; i < node.decorators.length; i++) {
                         decorators += node.decorators[i].expression.getText() + ",";
                     }
+                    //we need this if class has constructors with param decorator
+                    let constructor = getConstructor(node);
+                    if (constructor) {
+                        if (hasParametersDecorators(constructor)) {
+                            decorators += commentOutParametersDecorators(constructor);
+                        }
+                    }
                     decorators = decorators.slice(0, -1) + "], " + className + ");";
                     edits.push({pos: node.end, end: node.end, order: 1, afterEnd: decorators});
                 }
@@ -359,6 +366,20 @@ function deTypescript(fileNames, options, code) {
                             });
                         }
                     });
+                    if (hasParametersDecorators(node) && !node.parent.decorators) {
+                        var className;
+                        if (hasDefaultModifier(node.parent) && !node.parent.name) {
+                            className = "default_" + defaultCounter;
+                        } else {
+                            if (!node.parent.name)
+                                break;
+                            className = node.parent.name.getText();
+                        }
+                        var decorators = ";" + className + "= __decorate([";
+                        decorators += commentOutParametersDecorators(node);
+                        decorators = decorators.slice(0, -1) + "], " + className + ");";
+                        edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
+                    }
                 }
                 break;
         }
