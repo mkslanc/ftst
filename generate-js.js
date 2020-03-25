@@ -708,7 +708,7 @@ function deTypescript(fileNames, options, code) {
                         end = node.members[i].end;
                     }
                 }
-                let memberName = (/"(.)+"/.test(node.members[i].name.text) || ts.isNumericLiteral(node.members[i].name)) ? node.members[i].name.text : '"' + node.members[i].name.text + '"';
+                let memberName = (/^"(.)+"$/.test(node.members[i].name.text) || ts.isNumericLiteral(node.members[i].name)) ? node.members[i].name.text : (node.members[i].name.text) ? '"' + node.members[i].name.text.replace(/"/g, '\\"') + '"' : node.members[i].name.getText();
                 textToPaste = enumName + "[" + enumName + "[" + memberName + "] = " + initializer + "] = " + memberName + ';';
                 edits.push({pos: node.members[i].pos, end: end, afterEnd: textToPaste});
             }
