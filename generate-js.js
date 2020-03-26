@@ -331,7 +331,7 @@ function deTypescript(fileNames, options, code) {
                 if (node.decorators && node.decorators.length) {
                     let afterEnd = "let " + className.constructionName + "= ";
                     edits.push({
-                        pos: node.decorators.pos + node.getLeadingTriviaWidth(),
+                        pos: node.pos + node.getLeadingTriviaWidth(),
                         end: node.decorators.end,
                         afterEnd: afterEnd
                     });
@@ -356,8 +356,14 @@ function deTypescript(fileNames, options, code) {
                     addMissedSuper(node);
                 }
                 break;
-            case (node.kind === ts.SyntaxKind.Constructor && node.parameters && node.parameters.length > 0):
-                if (node.body) {
+            case (node.kind === ts.SyntaxKind.Constructor):
+                if (node.decorators) {//decorators for constructors are not allowed
+                    edits.push({
+                        pos: node.decorators.pos,
+                        end: node.decorators.end
+                    });
+                }
+                if (node.body && node.parameters && node.parameters.length > 0) {
                     let parameterPos = getPositionForParameters(node.body);
                     node.parameters.forEach(function (param) {
                         if (hasControllingAccessModifier(param)) {
@@ -378,6 +384,12 @@ function deTypescript(fileNames, options, code) {
                                 break;
                             className = node.parent.name.getText();
                         }
+                        let afterEnd = "let " + className + "= ";
+                        edits.push({
+                            pos: node.parent.pos + node.parent.getLeadingTriviaWidth(),
+                            end: node.parent.pos + node.parent.getLeadingTriviaWidth(),
+                            afterEnd: afterEnd
+                        });
                         var decorators = ";" + className + "= __decorate([";
                         decorators += commentOutParametersDecorators(node);
                         decorators = decorators.slice(0, -1) + "], " + className + ");";
