@@ -204,7 +204,7 @@ function deTypescript(fileNames, options, code) {
                         edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
                     }
                 }
-                if (ts.isPropertyDeclaration(node) && !node.initializer) {
+                if (ts.isPropertyDeclaration(node) && !node.initializer && !ts.isPrivateIdentifier(node.name)) {
                     edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                 }
                 break;
@@ -324,15 +324,15 @@ function deTypescript(fileNames, options, code) {
                 }
                 break;
             case (ts.isClassDeclaration(node)):
+                var className = getClassName(node);
                 if (node.decorators && node.decorators.length) {
-                    var className = node.name.getText();
-                    let afterEnd = "let " + className + "= ";
+                    let afterEnd = "let " + className.constructionName + "= ";
                     edits.push({
                         pos: node.decorators.pos + node.getLeadingTriviaWidth(),
                         end: node.decorators.end,
                         afterEnd: afterEnd
                     });
-                    var decorators = ";" + className + "= __decorate([";
+                    var decorators = ";" + className.constructionName + "= __decorate([";
                     for (var i = 0; i < node.decorators.length; i++) {
                         decorators += node.decorators[i].expression.getText() + ",";
                     }
@@ -343,11 +343,11 @@ function deTypescript(fileNames, options, code) {
                             decorators += commentOutParametersDecorators(constructor);
                         }
                     }
-                    decorators = decorators.slice(0, -1) + "], " + className + ");";
+                    decorators = decorators.slice(0, -1) + "], " + className.constructionName + ");";
                     edits.push({pos: node.end, end: node.end, order: 1, afterEnd: decorators});
                 }
                 if (hasExportModifier(node)) {
-                    transformExportClass(node);
+                    transformExportClass(node, className);
                 }
                 if (hasExtendsHeritage(node)) {
                     addMissedSuper(node);
@@ -799,18 +799,26 @@ function deTypescript(fileNames, options, code) {
         edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
     }
 
-    function transformExportClass(node) {
+    function transformExportClass(node, className) {
         let moduleName = getModuleName(node);
+        var constructionName = className.constructionName, dotPropertyName = className.dotPropertyName;
+        let textToPaste = ";" + moduleName + "." + dotPropertyName + " = " + constructionName + ";";
+        edits.push({pos: node.end, end: node.end, order: 2, afterEnd: textToPaste});
+    }
+
+    function getClassName(node) {
         var constructionName, dotPropertyName;
         if (hasDefaultModifier(node) || !node.name) {
             if (!node.name) {
                 defaultCounter++;
                 constructionName = "default_" + defaultCounter;
-                edits.push({
-                    pos: node.members.pos - 1,
-                    end: node.members.pos - 1,
-                    afterEnd: constructionName
-                });
+                if (!node.decorators) {
+                    edits.push({
+                        pos: node.members.pos - 1,
+                        end: node.members.pos - 1,
+                        afterEnd: constructionName
+                    });
+                }
             } else {
                 constructionName = node.name.getText();
             }
@@ -819,8 +827,7 @@ function deTypescript(fileNames, options, code) {
             constructionName = node.name.getText();
             dotPropertyName = constructionName;
         }
-        let textToPaste = ";" + moduleName + "." + dotPropertyName + " = " + constructionName + ";";
-        edits.push({pos: node.end, end: node.end, order: 2, afterEnd: textToPaste});
+        return {constructionName: constructionName, dotPropertyName: dotPropertyName}
     }
 
     function transformExportVariable(node) {
