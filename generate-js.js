@@ -207,6 +207,9 @@ function deTypescript(fileNames, options, code) {
                 if (ts.isPropertyDeclaration(node) && !node.initializer && !ts.isPrivateIdentifier(node.name)) {
                     edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                 }
+                if (ts.isMethodDeclaration(node) && node.questionToken) {
+                    edits.push({pos: node.questionToken.pos, end: node.questionToken.end});
+                }
                 break;
             case (node.body && ts.isModuleDeclaration(node) && !hasDeclareModifier(node)):
                 //TODO: maybe need some checks for crazy stuff like abstract namespace Example etc
