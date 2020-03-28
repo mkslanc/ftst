@@ -691,25 +691,45 @@ function deTypescript(fileNames, options, code) {
 
     function transformEnum(node) {
         let enumName = node.name.getText();
-        let textToPaste, initializer;
+        let textToPaste, initializer, computed = false;
+        var enumMemberTransform = [];
         if (node.members && node.members.length > 0) {
             initializer = 0;
             for (var i = 0; i < node.members.length; i++) {
+                computed = false;
                 if (node.members[i].initializer) {
                     if (node.members[i].initializer.kind == ts.SyntaxKind.ThisKeyword) {
                         initializer = "this";
                     } else {
                         initializer = checker.getConstantValue(node.members[i]);
                         if (initializer == undefined) {
-                            initializer = node.members[i].initializer.getText();
+                            evaluateBinaryExpression(node.members[i].initializer);
+                            let currentText = node.members[i].initializer.getText();
+
+                            enumMemberTransform.forEach(function (el) {
+                                let regExp = new RegExp("([^.\w]|^)(" + el + ")([^.\w]|$)");
+                                currentText = currentText.replace(regExp, "$1" + enumName + "." + el + "$3");
+                            });
+
+                            initializer = currentText;
+                            enumMemberTransform = [];
+                            computed = true;
                         }
                     }
                 } else {
                     if (i != 0) {
-                        if (node.members[i - 1].initializer && typeof node.members[i - 1].initializer.getText() === "number") {
-                            initializer = parseInt(node.members[i - 1].initializer.getText()) + 1;
+                        let typeOfEnumMemberInitializer = typeof checker.getConstantValue(node.members[i - 1]);
+                        if (typeOfEnumMemberInitializer === "number") {
+                            if (node.members[i - 1].initializer) {
+                                initializer = checker.getConstantValue(node.members[i - 1]) + 1;
+                                if (initializer == undefined) {
+                                    initializer = parseInt(node.members[i - 1].initializer.getText()) + 1;
+                                }
+                            } else {
+                                initializer++;
+                            }
                         } else {
-                            initializer++;
+                            initializer = undefined;
                         }
                     }
                 }
@@ -724,7 +744,15 @@ function deTypescript(fileNames, options, code) {
                     }
                 }
                 let memberName = (/^"(.)+"$/.test(node.members[i].name.text) || ts.isNumericLiteral(node.members[i].name)) ? node.members[i].name.text : (node.members[i].name.text) ? '"' + node.members[i].name.text.replace(/"/g, '\\"') + '"' : node.members[i].name.getText();
-                textToPaste = enumName + "[" + enumName + "[" + memberName + "] = " + initializer + "] = " + memberName + ';';
+                if (typeof initializer === "string" && !computed) {
+                    textToPaste = enumName + "[" + memberName + "] = \"" + initializer + "\";";
+                } else {
+                    if (initializer === undefined) {
+                        textToPaste = enumName + "[" + enumName + "[" + memberName + "] = void 0] = " + memberName + ';';
+                    } else {
+                        textToPaste = enumName + "[" + enumName + "[" + memberName + "] = " + initializer + "] = " + memberName + ';';
+                    }
+                }
                 edits.push({pos: node.members[i].pos, end: end, afterEnd: textToPaste});
             }
         }
@@ -747,6 +775,24 @@ function deTypescript(fileNames, options, code) {
             textToPaste = ")(" + enumName + " || (" + enumName + " = {}));";
         }
         edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+
+        function evaluateBinaryExpression(expr) {
+            switch (expr.kind) {
+                case ts.SyntaxKind.BinaryExpression:
+                    evaluateBinaryExpression(expr.left);
+                    evaluateBinaryExpression(expr.right);
+                    break;
+                case ts.SyntaxKind.Identifier:
+                    var identifier = expr;
+                    let symbol2 = checker.getSymbolAtLocation(identifier);
+                    if (symbol2 && !isTheSameStatement(identifier, symbol2)) {
+                        if (symbol2.valueDeclaration && symbol2.parent && symbol2.parent.valueDeclaration && symbol2.parent.valueDeclaration === node) {
+                            enumMemberTransform.push(identifier.getText());
+                        }
+                    }
+                    break;
+            }
+        }
     }
 
     function hasParametersDecorators(node) {
