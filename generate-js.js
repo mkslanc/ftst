@@ -636,7 +636,7 @@ function deTypescript(fileNames, options, code) {
         while (nestedModule.body.name) {
             nestedModule = nestedModule.body;
         }
-        if (nestedModule.body.statements && nestedModule.body.statements.length > 0) {
+        if (nestedModule.body.statements && nestedModule.body.statements.length > 0 && !areNonEmitStatements(nestedModule.body.statements)) {
             if (hasExportModifier(node)) {
                 let parentModuleName = getModuleName(node);
                 textToPaste = isDuplicatedDeclaration(node) ?
@@ -687,6 +687,12 @@ function deTypescript(fileNames, options, code) {
         } else {
             edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
         }
+    }
+    
+    function areNonEmitStatements(statements) {
+        return statements.every(function (statement) {
+            return (ts.isInterfaceDeclaration(statement));
+        })
     }
 
     function transformEnum(node) {
