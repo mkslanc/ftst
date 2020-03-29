@@ -65,7 +65,7 @@ function generateJavaScriptFile(path, options) {
         if (stat.isFile() && /\.ts$/.test(path)) {
             var fileArr = [];
             fileArr.push(path);
-            var filename = path.replace(".ts", ".js");
+            var filename = path.replace(".ts", "Js.js");
             fs.copyFileSync(path, filename);
             let edits = deTypescript(fileArr, options);
             applyEditsToFile(filename, edits);
@@ -165,10 +165,9 @@ function deTypescript(fileNames, options, code) {
             case ((ts.isGetAccessor(node) || ts.isSetAccessor(node)) && !node.body):
             case (node.kind && node.kind == ts.SyntaxKind.Constructor && !node.body):
             case (ts.isHeritageClause(node) && node.token && node.token == ts.SyntaxKind.ImplementsKeyword):
-                //TODO: maybe i will find better way to exclude overloads for functions and class methods
-                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
-                return;
             case (hasDeclareModifier(node)):
+            case (ts.isIndexSignatureDeclaration(node)):
+                //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                 return;
             case (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node)):
