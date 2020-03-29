@@ -796,7 +796,7 @@ function deTypescript(fileNames, options, code) {
         } else {
             textToPaste = isDuplicatedDeclaration(node) ?
                 "(function (" + enumName + ")" :
-                (isInsideModule(node)) ?
+                (isInsideModule(node) || isInsideFunction(node)) ?
                     "let " + enumName + ";(function (" + enumName + ")" :
                     "var " + enumName + ";(function (" + enumName + ")";
             edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: textToPaste});
@@ -947,6 +947,10 @@ function deTypescript(fileNames, options, code) {
 
     function isInsideModule(node) {
         return (node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent));
+    }
+
+    function isInsideFunction(node) {
+        return (node.parent && node.parent.parent && ts.isFunctionDeclaration(node.parent.parent));
     }
 
     function getModuleName(node) {
