@@ -180,7 +180,7 @@ function deTypescript(fileNames, options, code) {
                         break;
                     className = node.parent.name.getText();
                 }
-                var constructionName = node.name.getText();
+                var constructionName = getMethodName(node.name);
                 if (node.decorators && node.decorators.length) {
                     edits.push({pos: node.decorators.pos, end: node.decorators.end});
                     var decorators = ";__decorate([";
@@ -403,6 +403,14 @@ function deTypescript(fileNames, options, code) {
         }
         commentOutTypes(node);
         ts.forEachChild(node, visit);
+    }
+
+    function getMethodName(node) {
+        if (ts.isComputedPropertyName(node)) {
+            return node.expression.getText().replace(/"/g,"");
+        } else {
+            return node.getText();
+        }
     }
 
     function normalizeBracketsInArrowFunction(node) {
