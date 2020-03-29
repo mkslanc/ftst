@@ -397,9 +397,31 @@ function deTypescript(fileNames, options, code) {
                     }
                 }
                 break;
+            case ts.isArrowFunction(node):
+                normalizeBracketsInArrowFunction(node);
+                break;
         }
         commentOutTypes(node);
         ts.forEachChild(node, visit);
+    }
+
+    function normalizeBracketsInArrowFunction(node) {
+        if (node.body && node.body.kind === ts.SyntaxKind.TypeAssertionExpression) {
+            let firstToken = node.body.getFirstToken();
+            if (firstToken) {
+                let lastToken = node.body.getLastToken();
+                if (firstToken.kind !== ts.SyntaxKind.OpenParenToken) {
+                    edits.push({
+                        pos: node.body.pos + node.body.getLeadingTriviaWidth() - 1,
+                        end: node.body.pos + node.body.getLeadingTriviaWidth() - 1,
+                        afterEnd: "("
+                    });
+                }
+                if (lastToken.kind !== ts.SyntaxKind.CloseParenToken) {
+                    edits.push({pos: node.body.end, end: node.body.end, afterEnd: ")"});
+                }
+            }
+        }
     }
 
     function hasExtendsHeritage(node) {
