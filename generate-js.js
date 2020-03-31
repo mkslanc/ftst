@@ -276,6 +276,9 @@ function deTypescript(fileNames, options, code) {
                                 afterEnd: "",
                                 moduleName: moduleReferenceNameBinding
                             });
+                            if (!modulesIdentifiers[moduleReferenceNameBinding]) {
+                                modulesIdentifiers[moduleReferenceNameBinding] = moduleReferenceNameBinding;
+                            }
                             edits.push({
                                 pos: node.end,
                                 end: node.end,
@@ -304,7 +307,7 @@ function deTypescript(fileNames, options, code) {
                             moduleReferencesNames[moduleReferenceName] = 0;
                         }
                         moduleReferencesNames[moduleReferenceName]++;
-                        setExportedIdentifiers(node, moduleReferenceName);
+                        setExportedIdentifiers(node, getComposedReferenceName(moduleReferenceName));
                         textToPaste = "var " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
                         edits.push({
                             pos: node.pos + node.getLeadingTriviaWidth(),
@@ -494,7 +497,7 @@ function deTypescript(fileNames, options, code) {
 
     function findReferencedDeclaration(symbol) {
         if (symbol.valueDeclaration) {//priority for value declaration
-            let transform = findReferencedTransform(symbol.valueDeclaration.pos + symbol.valueDeclaration.getLeadingTriviaWidth());
+            let transform = findReferencedTransformByEndPos(symbol.valueDeclaration.pos + symbol.valueDeclaration.getLeadingTriviaWidth());
             if (transform) {
                 transform.used = true;
                 return transform;
@@ -502,7 +505,7 @@ function deTypescript(fileNames, options, code) {
         } else {
             if (symbol.declarations) {
                 for (var i = 0; i < symbol.declarations.length; i++) {
-                    let transform = findReferencedTransform(symbol.declarations[i].pos + symbol.declarations[i].getLeadingTriviaWidth());
+                    let transform = findReferencedTransformByEndPos(symbol.declarations[i].pos + symbol.declarations[i].getLeadingTriviaWidth());
                     if (transform) {
                         transform.used = true;
                         return transform;
@@ -539,6 +542,10 @@ function deTypescript(fileNames, options, code) {
     function setImportedIdentifiers(node, moduleName) {
         if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.elements && node.importClause.namedBindings.elements.length > 0) {
             node.importClause.namedBindings.elements.forEach(function (el) {
+                let elName = (el.propertyName) ? el.propertyName.getText() : el.getText();
+                if (!modulesIdentifiers[elName]) {
+                    modulesIdentifiers[elName] = moduleName + "_" + moduleReferencesNames[moduleName];
+                }
                 if (el.propertyName) {
                     refParents.push({
                         pos: el.pos + el.getLeadingTriviaWidth(),
@@ -558,6 +565,10 @@ function deTypescript(fileNames, options, code) {
             });
         }
         if (node.importClause && node.importClause.name) {
+            let elName = node.importClause.name.getText();
+            if (!modulesIdentifiers[elName]) {
+                modulesIdentifiers[elName] = moduleName + "_" + moduleReferencesNames[moduleName] + ".default";
+            }
             refParents.push({
                 pos: node.importClause.name.pos + node.importClause.name.getLeadingTriviaWidth(),
                 aliasEnd: node.importClause.name.pos,
@@ -574,8 +585,16 @@ function deTypescript(fileNames, options, code) {
             let elPropertyName = (el.propertyName) ? el.propertyName.getText() : el.name.getText();
             let elName = el.name.getText();
             let text;
+            if (isImportedIdentifier(elPropertyName) && !moduleName) {
+                moduleName = modulesIdentifiers[elPropertyName];
+                let transform = findReferencedTransformByModule(moduleName);
+                if (transform) {
+                    transform.used = true;
+                }
+            }
             if (moduleName) {
-                text = "exports." + elName + " = " + getComposedReferenceName(moduleName) + elPropertyName + ";";
+                let identifier = (/_[\d]+$/.test(moduleName)) ? moduleName + "." + elPropertyName : moduleName;
+                text = "exports." + elName + " = " + identifier + ";";
             } else {
                 text = "exports." + elName + " = " + elPropertyName + ";";
             }
@@ -583,12 +602,12 @@ function deTypescript(fileNames, options, code) {
         });
     }
 
-    function isImportedIdentifier(node) {
-        return !!(modulesIdentifiers[node.getText()]);
+    function isImportedIdentifier(name) {
+        return !!(modulesIdentifiers.hasOwnProperty(name));
     }
 
     function getComposedReferenceName(moduleName) {
-        return moduleName + "_" + moduleReferencesNames[moduleName] + ".";
+        return moduleName + "_" + moduleReferencesNames[moduleName];
     }
 
     function commentOutTypes(node) {
@@ -934,16 +953,23 @@ function deTypescript(fileNames, options, code) {
                 end: node.declarationList.declarations[0].pos
             });
             node.declarationList.declarations.forEach(function (decl) {
-                let textToPaste = moduleName + ".";
-                refParents.push({
-                    pos: decl.pos + decl.getLeadingTriviaWidth(),
-                    afterEnd: textToPaste,
-                });
-                edits.push({
-                    pos: decl.pos + decl.getLeadingTriviaWidth(),
-                    end: decl.pos + decl.getLeadingTriviaWidth(),
-                    afterEnd: textToPaste
-                });
+                if (decl.initializer) {
+                    let textToPaste = moduleName + ".";
+                    refParents.push({
+                        pos: decl.pos + decl.getLeadingTriviaWidth(),
+                        afterEnd: textToPaste,
+                    });
+                    edits.push({
+                        pos: decl.pos + decl.getLeadingTriviaWidth(),
+                        end: decl.pos + decl.getLeadingTriviaWidth(),
+                        afterEnd: textToPaste
+                    });
+                } else {
+                    edits.push({
+                        pos: decl.pos + decl.getLeadingTriviaWidth(),
+                        end: decl.end + 1
+                    });
+                }
             });
         }
     }
@@ -980,9 +1006,15 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
-    function findReferencedTransform(endPos) {
+    function findReferencedTransformByEndPos(endPos) {
         return refParents.find(function (el) {
             return (el.pos === endPos)
+        });
+    }
+
+    function findReferencedTransformByModule(moduleName) {
+        return refParents.find(function (el) {
+            return (el.moduleName === moduleName)
         });
     }
 
