@@ -99,6 +99,10 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
+    function getTextFromSourceFile(pos, end) {
+        return sourceFile.getFullText().slice(pos, end);
+    }
+
     function visit(node) {
         switch (true) {
             case (ts.isIdentifier(node)):
@@ -169,6 +173,9 @@ function deTypescript(fileNames, options, code) {
             case (ts.isIndexSignatureDeclaration(node)):
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+                return;
+            case (ts.isParameter(node) && node.name && node.name.getText() == "this"):
+                commentOutThisFromParameters(node);
                 return;
             case (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node)):
                 var className;
@@ -407,9 +414,25 @@ function deTypescript(fileNames, options, code) {
         ts.forEachChild(node, visit);
     }
 
+    function commentOutThisFromParameters(node) {
+        var text = getTextFromSourceFile(node.parent.parameters.pos, node.parent.parameters.end);
+        let result = text.match(/(,\s*)?(@.+)?this(?:\:[^,]*)?(,)?/);
+        if (result[1] && result[2]) {
+            edits.push({
+                pos: node.parent.parameters.pos + result.index,
+                end: node.parent.parameters.pos + result.index + result[0].length - 1
+            });
+        } else {
+            edits.push({
+                pos: node.parent.parameters.pos + result.index,
+                end: node.parent.parameters.pos + result.index + result[0].length
+            });
+        }
+    }
+
     function getMethodName(node) {
         if (ts.isComputedPropertyName(node)) {
-            return node.expression.getText().replace(/"/g,"");
+            return node.expression.getText().replace(/"/g, "");
         } else {
             return node.getText();
         }
@@ -662,7 +685,7 @@ function deTypescript(fileNames, options, code) {
 
     function commentOutParametersDecorators(node) {
         let decorators = '';
-
+        let thisParam = getThisParameter(node);
         for (var i = 0; i < node.parameters.length; i++) {
             if (node.parameters[i].decorators && node.parameters[i].decorators.length) {
                 for (var j = 0; j < node.parameters[i].decorators.length; j++) {
@@ -670,7 +693,8 @@ function deTypescript(fileNames, options, code) {
                         pos: node.parameters[i].decorators[j].pos,
                         end: node.parameters[i].decorators[j].end
                     });
-                    decorators += "__param(" + i + "," + node.parameters[i].decorators[j].expression.getText() + "),";
+                    let paramNum = (thisParam && thisParam.pos < node.parameters[i].pos) ? i - 1 : i;
+                    decorators += "__param(" + paramNum + "," + node.parameters[i].decorators[j].expression.getText() + "),";
                 }
             }
         }
@@ -736,7 +760,7 @@ function deTypescript(fileNames, options, code) {
             edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
         }
     }
-    
+
     function areNonEmitStatements(statements) {
         return statements.every(function (statement) {
             return (ts.isInterfaceDeclaration(statement));
@@ -853,6 +877,16 @@ function deTypescript(fileNames, options, code) {
         if (node.parameters && node.parameters.length > 0) {
             return node.parameters.some(function (param) {
                 if (param.decorators && param.decorators.length > 0) {
+                    return true
+                }
+            });
+        }
+    }
+
+    function getThisParameter(node) {
+        if (node.parameters && node.parameters.length > 0) {
+            return node.parameters.find(function (param) {
+                if (param.name && param.name.getText() == "this") {
                     return true
                 }
             });
