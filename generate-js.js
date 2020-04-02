@@ -106,56 +106,10 @@ function deTypescript(fileNames, options, code) {
     function visit(node) {
         switch (true) {
             case (ts.isIdentifier(node)):
-                let symbol2 = checker.getSymbolAtLocation(node);
-                if (symbol2 && !isTheSameStatement(node, symbol2)) {
-                    textToPaste = findReferencedDeclaration(symbol2);
-
-                    if (textToPaste && textToPaste.afterEnd != "var " && textToPaste.afterEnd != "const " && !isAlreadyReferenced(node, textToPaste.afterEnd)) {
-                        edits.push({
-                            pos: node.pos + node.getLeadingTriviaWidth(),
-                            end: (textToPaste.replace) ? node.end : node.pos + node.getLeadingTriviaWidth(),
-                            afterEnd: textToPaste.afterEnd
-                        });
-                    }
-                }
+                transformReferencedIdentifier(node);
                 break;
             case (ts.isExportAssignment(node)):
-                if (node.isExportEquals && node.isExportEquals == true) {
-                    let symbol = checker.getSymbolAtLocation(node.expression);
-                    if (symbol && symbol.valueDeclaration) {
-                        //single module export allowed
-                        if (moduleExportExists === true) {
-                            edits.push({
-                                pos: node.pos + node.getLeadingTriviaWidth(),
-                                end: node.end
-                            });
-                        } else {
-                            moduleExportExists = true;
-                            edits.push({
-                                pos: node.pos + node.getLeadingTriviaWidth(),
-                                end: node.pos + node.getLeadingTriviaWidth(),
-                                afterEnd: "module."
-                            });
-                            edits.push({
-                                pos: node.pos + node.getLeadingTriviaWidth() + 6,
-                                end: node.pos + node.getLeadingTriviaWidth() + 6, afterEnd: "s"
-                            });
-                        }
-                    } else {
-                        edits.push({
-                            pos: node.pos + node.getLeadingTriviaWidth(),
-                            end: node.end
-                        });
-                    }
-                } else {
-                    exportExists = true;
-                    edits.push({
-                        pos: node.pos + node.getLeadingTriviaWidth() + 6,
-                        end: node.pos + node.getLeadingTriviaWidth() + 7,
-                        afterEnd: "s."
-                    });
-                    edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd: " ="});
-                }
+                transformExportAssignment(node);
                 break;
             case ts.isTypeAliasDeclaration(node):
             case ts.isInterfaceDeclaration(node):
@@ -178,44 +132,7 @@ function deTypescript(fileNames, options, code) {
                 commentOutThisFromParameters(node);
                 return;
             case (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node)):
-                var className;
-                if (hasDefaultModifier(node.parent) && !node.parent.name) {
-                    className = "default_" + defaultCounter;
-                } else {
-                    if (!node.parent.name)
-                        break;
-                    className = node.parent.name.getText();
-                }
-                var constructionName = getMethodName(node.name);
-                if (node.decorators && node.decorators.length) {
-                    edits.push({pos: node.decorators.pos, end: node.decorators.end});
-                    var decorators = ";__decorate([";
-                    for (var i = 0; i < node.decorators.length; i++) {
-                        decorators += node.decorators[i].expression.getText() + ",";
-                    }
-                    if (ts.isPropertyDeclaration(node)) {
-                        decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", void 0);";
-                    } else {
-                        if (hasParametersDecorators(node)) {
-                            decorators += commentOutParametersDecorators(node);
-                        }
-                        decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
-                    }
-                    edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
-                } else {
-                    if (hasParametersDecorators(node)) {
-                        var decorators = ";__decorate([";
-                        decorators += commentOutParametersDecorators(node);
-                        decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
-                        edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
-                    }
-                }
-                if (ts.isPropertyDeclaration(node) && !node.initializer && !ts.isPrivateIdentifier(node.name)) {
-                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
-                }
-                if (ts.isMethodDeclaration(node) && node.questionToken) {
-                    edits.push({pos: node.questionToken.pos, end: node.questionToken.end});
-                }
+                transformClassElements(node);
                 break;
             case (node.body && ts.isModuleDeclaration(node) && !hasDeclareModifier(node)):
                 //TODO: maybe need some checks for crazy stuff like abstract namespace Example etc
@@ -231,180 +148,19 @@ function deTypescript(fileNames, options, code) {
                 transformExportVariable(node);
                 break;
             case (ts.isImportEqualsDeclaration(node)):
-                var textToPaste;
-                if (node.moduleReference && ts.isExternalModuleReference(node.moduleReference)) {
-                    exportExists = true;
-                    if (hasExportModifier(node)) {
-                        textToPaste = getModuleName(node) + '.';
-                    } else {
-                        textToPaste = 'const ';
-                    }
-                } else {
-                    if (hasExportModifier(node)) {
-                        textToPaste = getModuleName(node) + '.';
-                    } else {
-                        textToPaste = 'var '
-                    }
-                }
-                refParents.push({
-                    pos: node.pos + node.getLeadingTriviaWidth(),
-                    afterEnd: textToPaste
-                });
-                edits.push({
-                    pos: node.pos + node.getLeadingTriviaWidth(),
-                    end: node.name.pos + 1,
-                    afterEnd: textToPaste
-                });
+                transformImportEqualsDeclaration(node);
                 break;
             case (ts.isImportDeclaration(node)):
-                var moduleReferenceName = getModuleSpecifierName(node);
-                if (moduleReferenceName != undefined) {
-                    exportExists = true;
-                    if (node.importClause) {
-                        if (node.importClause.name || (node.importClause.namedBindings && node.importClause.namedBindings.elements)) {
-                            if (!moduleReferencesNames[moduleReferenceName]) {
-                                moduleReferencesNames[moduleReferenceName] = 0;
-                            }
-                            moduleReferencesNames[moduleReferenceName]++;
-                            textToPaste = "const " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
-                            edits.push({
-                                pos: node.end,
-                                end: node.end,
-                                aliasEnd: node.importClause.pos,
-                                afterEnd: textToPaste
-                            });
-                        }
-                        if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.name) {
-                            let moduleReferenceNameBinding = node.importClause.namedBindings.name.getText();
-                            textToPaste = "const " + moduleReferenceNameBinding + " = require(\"" + node.moduleSpecifier.text + "\");";
-                            refParents.push({
-                                pos: node.importClause.namedBindings.pos + node.importClause.namedBindings.getLeadingTriviaWidth(),
-                                aliasEnd: node.importClause.namedBindings.name.pos,
-                                afterEnd: "",
-                                moduleName: moduleReferenceNameBinding
-                            });
-                            if (!modulesIdentifiers[moduleReferenceNameBinding]) {
-                                modulesIdentifiers[moduleReferenceNameBinding] = moduleReferenceNameBinding;
-                            }
-                            edits.push({
-                                pos: node.end,
-                                end: node.end,
-                                aliasEnd: node.importClause.namedBindings.name.pos,
-                                afterEnd: textToPaste
-                            });
-                        }
-                    } else {
-                        textToPaste = "require(\"" + node.moduleSpecifier.text + "\");";
-                        edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
-                    }
-                    setImportedIdentifiers(node, moduleReferenceName);
-                    edits.push({
-                        pos: node.pos + node.getLeadingTriviaWidth(),
-                        end: node.end
-                    });
-                }
+                transformImportDeclaration(node);
                 break;
             case (ts.isExportDeclaration(node)):
-                //TODO: need to test with import declaration
-                exportExists = true;
-                if (node.exportClause && node.exportClause.elements && node.exportClause.elements.length > 0) {
-                    var moduleReferenceName = getModuleSpecifierName(node);
-                    if (moduleReferenceName != undefined) {
-                        if (!moduleReferencesNames[moduleReferenceName]) {
-                            moduleReferencesNames[moduleReferenceName] = 0;
-                        }
-                        moduleReferencesNames[moduleReferenceName]++;
-                        setExportedIdentifiers(node, getComposedReferenceName(moduleReferenceName));
-                        textToPaste = "var " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
-                        edits.push({
-                            pos: node.pos + node.getLeadingTriviaWidth(),
-                            end: node.end,
-                            afterEnd: textToPaste
-                        });
-                    } else {//TODO: checker.getSymbolAtLocation(node.exportClause.elements[0].propertyName)
-                        setExportedIdentifiers(node);
-                        edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
-                    }
-                } else {
-                    if (node.moduleSpecifier) {
-                        exportWrapperExists = true;
-                        textToPaste = '__export(require(' + node.moduleSpecifier.getText() + "));";
-                    } else {
-                        textToPaste = '';
-                    }
-                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
-                }
+                transformExportDeclaration(node);
                 break;
             case (ts.isClassDeclaration(node)):
-                var className = getClassName(node);
-                if (node.decorators && node.decorators.length) {
-                    let afterEnd = "let " + className.constructionName + "= ";
-                    edits.push({
-                        pos: node.pos + node.getLeadingTriviaWidth(),
-                        end: node.decorators.end,
-                        afterEnd: afterEnd
-                    });
-                    var decorators = ";" + className.constructionName + "= __decorate([";
-                    for (var i = 0; i < node.decorators.length; i++) {
-                        decorators += node.decorators[i].expression.getText() + ",";
-                    }
-                    //we need this if class has constructors with param decorator
-                    let constructor = getConstructor(node);
-                    if (constructor) {
-                        if (hasParametersDecorators(constructor)) {
-                            decorators += commentOutParametersDecorators(constructor);
-                        }
-                    }
-                    decorators = decorators.slice(0, -1) + "], " + className.constructionName + ");";
-                    edits.push({pos: node.end, end: node.end, order: 1, afterEnd: decorators});
-                }
-                if (hasExportModifier(node)) {
-                    transformExportClass(node, className);
-                }
-                if (hasExtendsHeritage(node)) {
-                    addMissedSuper(node);
-                }
+                transformClass(node);
                 break;
             case (node.kind === ts.SyntaxKind.Constructor):
-                if (node.decorators) {//decorators for constructors are not allowed
-                    edits.push({
-                        pos: node.decorators.pos,
-                        end: node.decorators.end
-                    });
-                }
-                if (node.body && node.parameters && node.parameters.length > 0) {
-                    let parameterPos = getPositionForParameters(node.body);
-                    node.parameters.forEach(function (param) {
-                        if (hasControllingAccessModifier(param)) {
-                            textToPaste = "this." + param.name.getText() + " = " + param.name.getText() + ";";
-                            edits.push({
-                                pos: parameterPos,
-                                end: parameterPos,
-                                afterEnd: textToPaste
-                            });
-                        }
-                    });
-                    if (hasParametersDecorators(node) && !node.parent.decorators) {
-                        var className;
-                        if (hasDefaultModifier(node.parent) && !node.parent.name) {
-                            className = "default_" + defaultCounter;
-                        } else {
-                            if (!node.parent.name)
-                                break;
-                            className = node.parent.name.getText();
-                        }
-                        let afterEnd = "let " + className + "= ";
-                        edits.push({
-                            pos: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                            end: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                            afterEnd: afterEnd
-                        });
-                        var decorators = ";" + className + "= __decorate([";
-                        decorators += commentOutParametersDecorators(node);
-                        decorators = decorators.slice(0, -1) + "], " + className + ");";
-                        edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
-                    }
-                }
+                transformConstructor(node);
                 break;
             case ts.isArrowFunction(node):
                 normalizeBracketsInArrowFunction(node);
@@ -412,6 +168,281 @@ function deTypescript(fileNames, options, code) {
         }
         commentOutTypes(node);
         ts.forEachChild(node, visit);
+    }
+
+    function transformConstructor(node) {
+        if (node.decorators) {//decorators for constructors are not allowed
+            edits.push({
+                pos: node.decorators.pos,
+                end: node.decorators.end
+            });
+        }
+        if (node.body && node.parameters && node.parameters.length > 0) {
+            let parameterPos = getPositionForParameters(node.body);
+            node.parameters.forEach(function (param) {
+                if (hasControllingAccessModifier(param)) {
+                    textToPaste = "this." + param.name.getText() + " = " + param.name.getText() + ";";
+                    edits.push({
+                        pos: parameterPos,
+                        end: parameterPos,
+                        afterEnd: textToPaste
+                    });
+                }
+            });
+            if (hasParametersDecorators(node) && !node.parent.decorators) {
+                var className;
+                if (hasDefaultModifier(node.parent) && !node.parent.name) {
+                    className = "default_" + defaultCounter;
+                } else {
+                    if (!node.parent.name)
+                        return;
+                    className = node.parent.name.getText();
+                }
+                let afterEnd = "let " + className + "= ";
+                edits.push({
+                    pos: node.parent.pos + node.parent.getLeadingTriviaWidth(),
+                    end: node.parent.pos + node.parent.getLeadingTriviaWidth(),
+                    afterEnd: afterEnd
+                });
+                var decorators = ";" + className + "= __decorate([";
+                decorators += commentOutParametersDecorators(node);
+                decorators = decorators.slice(0, -1) + "], " + className + ");";
+                edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
+            }
+        }
+    }
+
+    function transformClass(node) {
+        var className = getClassName(node);
+        if (node.decorators && node.decorators.length) {
+            let afterEnd = "let " + className.constructionName + "= ";
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                end: node.decorators.end,
+                afterEnd: afterEnd
+            });
+            var decorators = ";" + className.constructionName + "= __decorate([";
+            for (var i = 0; i < node.decorators.length; i++) {
+                decorators += node.decorators[i].expression.getText() + ",";
+            }
+            //we need this if class has constructors with param decorator
+            let constructor = getConstructor(node);
+            if (constructor) {
+                if (hasParametersDecorators(constructor)) {
+                    decorators += commentOutParametersDecorators(constructor);
+                }
+            }
+            decorators = decorators.slice(0, -1) + "], " + className.constructionName + ");";
+            edits.push({pos: node.end, end: node.end, order: 1, afterEnd: decorators});
+        }
+        if (hasExportModifier(node)) {
+            transformExportClass(node, className);
+        }
+        if (hasExtendsHeritage(node)) {
+            addMissedSuper(node);
+        }
+    }
+
+    function transformExportDeclaration(node) {
+        exportExists = true;
+        if (node.exportClause && node.exportClause.elements && node.exportClause.elements.length > 0) {
+            var moduleReferenceName = getModuleSpecifierName(node);
+            if (moduleReferenceName != undefined) {
+                if (!moduleReferencesNames[moduleReferenceName]) {
+                    moduleReferencesNames[moduleReferenceName] = 0;
+                }
+                moduleReferencesNames[moduleReferenceName]++;
+                setExportedIdentifiers(node, getComposedReferenceName(moduleReferenceName));
+                textToPaste = "var " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
+                edits.push({
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    end: node.end,
+                    afterEnd: textToPaste
+                });
+            } else {//TODO: checker.getSymbolAtLocation(node.exportClause.elements[0].propertyName)
+                setExportedIdentifiers(node);
+                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+            }
+        } else {
+            if (node.moduleSpecifier) {
+                exportWrapperExists = true;
+                textToPaste = '__export(require(' + node.moduleSpecifier.getText() + "));";
+            } else {
+                textToPaste = '';
+            }
+            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
+        }
+    }
+
+    function transformImportDeclaration(node) {
+        var moduleReferenceName = getModuleSpecifierName(node);
+        if (moduleReferenceName != undefined) {
+            exportExists = true;
+            if (node.importClause) {
+                if (node.importClause.name || (node.importClause.namedBindings && node.importClause.namedBindings.elements)) {
+                    if (!moduleReferencesNames[moduleReferenceName]) {
+                        moduleReferencesNames[moduleReferenceName] = 0;
+                    }
+                    moduleReferencesNames[moduleReferenceName]++;
+                    textToPaste = "const " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
+                    edits.push({
+                        pos: node.end,
+                        end: node.end,
+                        aliasEnd: node.importClause.pos,
+                        afterEnd: textToPaste
+                    });
+                }
+                if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.name) {
+                    let moduleReferenceNameBinding = node.importClause.namedBindings.name.getText();
+                    textToPaste = "const " + moduleReferenceNameBinding + " = require(\"" + node.moduleSpecifier.text + "\");";
+                    refParents.push({
+                        pos: node.importClause.namedBindings.pos + node.importClause.namedBindings.getLeadingTriviaWidth(),
+                        aliasEnd: node.importClause.namedBindings.name.pos,
+                        afterEnd: "",
+                        moduleName: moduleReferenceNameBinding
+                    });
+                    if (!modulesIdentifiers[moduleReferenceNameBinding]) {
+                        modulesIdentifiers[moduleReferenceNameBinding] = moduleReferenceNameBinding;
+                    }
+                    edits.push({
+                        pos: node.end,
+                        end: node.end,
+                        aliasEnd: node.importClause.namedBindings.name.pos,
+                        afterEnd: textToPaste
+                    });
+                }
+            } else {
+                textToPaste = "require(\"" + node.moduleSpecifier.text + "\");";
+                edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+            }
+            setImportedIdentifiers(node, moduleReferenceName);
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                end: node.end
+            });
+        }
+    }
+
+    function transformImportEqualsDeclaration(node) {
+        var textToPaste;
+        if (node.moduleReference && ts.isExternalModuleReference(node.moduleReference)) {
+            exportExists = true;
+            if (hasExportModifier(node)) {
+                textToPaste = getModuleName(node) + '.';
+            } else {
+                textToPaste = 'const ';
+            }
+        } else {
+            if (hasExportModifier(node)) {
+                textToPaste = getModuleName(node) + '.';
+            } else {
+                textToPaste = 'var '
+            }
+        }
+        refParents.push({
+            pos: node.pos + node.getLeadingTriviaWidth(),
+            afterEnd: textToPaste
+        });
+        edits.push({
+            pos: node.pos + node.getLeadingTriviaWidth(),
+            end: node.name.pos + 1,
+            afterEnd: textToPaste
+        });
+    }
+
+    function transformClassElements(node) {
+        var className;
+        if (hasDefaultModifier(node.parent) && !node.parent.name) {
+            className = "default_" + defaultCounter;
+        } else {
+            if (!node.parent.name)
+                return;
+            className = node.parent.name.getText();
+        }
+        var constructionName = getMethodName(node.name);
+        if (node.decorators && node.decorators.length) {
+            edits.push({pos: node.decorators.pos, end: node.decorators.end});
+            var decorators = ";__decorate([";
+            for (var i = 0; i < node.decorators.length; i++) {
+                decorators += node.decorators[i].expression.getText() + ",";
+            }
+            if (ts.isPropertyDeclaration(node)) {
+                decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", void 0);";
+            } else {
+                if (hasParametersDecorators(node)) {
+                    decorators += commentOutParametersDecorators(node);
+                }
+                decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
+            }
+            edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
+        } else {
+            if (hasParametersDecorators(node)) {
+                var decorators = ";__decorate([";
+                decorators += commentOutParametersDecorators(node);
+                decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
+                edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
+            }
+        }
+        if (ts.isPropertyDeclaration(node) && !node.initializer && !ts.isPrivateIdentifier(node.name)) {
+            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+        }
+        if (ts.isMethodDeclaration(node) && node.questionToken) {
+            edits.push({pos: node.questionToken.pos, end: node.questionToken.end});
+        }
+    }
+
+    function transformReferencedIdentifier(node) {
+        let symbol2 = checker.getSymbolAtLocation(node);
+        if (symbol2 && !isTheSameStatement(node, symbol2)) {
+            let textToPaste = findReferencedDeclaration(symbol2);
+
+            if (textToPaste && textToPaste.afterEnd != "var " && textToPaste.afterEnd != "const " && !isAlreadyReferenced(node, textToPaste.afterEnd)) {
+                edits.push({
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    end: (textToPaste.replace) ? node.end : node.pos + node.getLeadingTriviaWidth(),
+                    afterEnd: textToPaste.afterEnd
+                });
+            }
+        }
+    }
+
+    function transformExportAssignment(node) {
+        if (node.isExportEquals && node.isExportEquals == true) {
+            let symbol = checker.getSymbolAtLocation(node.expression);
+            if (symbol && symbol.valueDeclaration) {
+                //single module export allowed
+                if (moduleExportExists === true) {
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        end: node.end
+                    });
+                } else {
+                    moduleExportExists = true;
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        end: node.pos + node.getLeadingTriviaWidth(),
+                        afterEnd: "module."
+                    });
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth() + 6,
+                        end: node.pos + node.getLeadingTriviaWidth() + 6, afterEnd: "s"
+                    });
+                }
+            } else {
+                edits.push({
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    end: node.end
+                });
+            }
+        } else {
+            exportExists = true;
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth() + 6,
+                end: node.pos + node.getLeadingTriviaWidth() + 7,
+                afterEnd: "s."
+            });
+            edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd: " ="});
+        }
     }
 
     function commentOutThisFromParameters(node) {
