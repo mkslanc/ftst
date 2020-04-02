@@ -223,7 +223,7 @@ function deTypescript(fileNames, options, code) {
             });
             var decorators = ";" + className.constructionName + "= __decorate([";
             for (var i = 0; i < node.decorators.length; i++) {
-                decorators += node.decorators[i].expression.getText() + ",";
+                decorators += replaceTypeCastInDecorators(node.decorators[i].expression.getText()) + ",";
             }
             //we need this if class has constructors with param decorator
             let constructor = getConstructor(node);
@@ -364,7 +364,7 @@ function deTypescript(fileNames, options, code) {
             edits.push({pos: node.decorators.pos, end: node.decorators.end});
             var decorators = ";__decorate([";
             for (var i = 0; i < node.decorators.length; i++) {
-                decorators += node.decorators[i].expression.getText() + ",";
+                decorators += replaceTypeCastInDecorators(node.decorators[i].expression.getText()) + ",";
             }
             if (ts.isPropertyDeclaration(node)) {
                 decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", void 0);";
@@ -389,6 +389,10 @@ function deTypescript(fileNames, options, code) {
         if (ts.isMethodDeclaration(node) && node.questionToken) {
             edits.push({pos: node.questionToken.pos, end: node.questionToken.end});
         }
+    }
+
+    function replaceTypeCastInDecorators(text) {
+        return text.replace(/\sas\s[^,]+(?=[,)])/g,"");
     }
 
     function transformReferencedIdentifier(node) {
@@ -725,7 +729,7 @@ function deTypescript(fileNames, options, code) {
                         end: node.parameters[i].decorators[j].end
                     });
                     let paramNum = (thisParam && thisParam.pos < node.parameters[i].pos) ? i - 1 : i;
-                    decorators += "__param(" + paramNum + "," + node.parameters[i].decorators[j].expression.getText() + "),";
+                    decorators += "__param(" + paramNum + "," + replaceTypeCastInDecorators(node.parameters[i].decorators[j].expression.getText()) + "),";
                 }
             }
         }
