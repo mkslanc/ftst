@@ -165,9 +165,25 @@ function deTypescript(fileNames, options, code) {
             case ts.isArrowFunction(node):
                 normalizeBracketsInArrowFunction(node);
                 break;
+            case (node.kind === ts.SyntaxKind.ImportKeyword && ts.isCallExpression(node.parent)):
+                transformDynamicImport(node);
+                break;
         }
         commentOutTypes(node);
         ts.forEachChild(node, visit);
+    }
+
+    function transformDynamicImport(node) {
+        edits.push({
+            pos: node.pos + node.getLeadingTriviaWidth(),
+            end: node.end,
+            afterEnd: "Promise.resolve().then(() => require"
+        });
+        edits.push({
+            pos: node.parent.end,
+            end: node.parent.end,
+            afterEnd: ")"
+        });
     }
 
     function transformConstructor(node) {
@@ -710,8 +726,8 @@ function deTypescript(fileNames, options, code) {
     function hasDefaultModifier(node) {
         if (node.modifiers && node.modifiers.length > 0) {
             return node.modifiers.some(function (el) {
-                edits.push({pos: el.pos + el.getLeadingTriviaWidth(), end: el.end});
                 if (el.kind == ts.SyntaxKind.DefaultKeyword) {
+                    edits.push({pos: el.pos + el.getLeadingTriviaWidth(), end: el.end});
                     return true
                 }
             });
