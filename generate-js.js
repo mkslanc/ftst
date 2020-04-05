@@ -91,10 +91,11 @@ function deTypescript(fileNames, options, code) {
     var moduleReferencesNames = {};
     var modulesIdentifiers = {};
     var textToPaste;
+    var fileNameRegExp = new RegExp(fileNames[0]);
 
     for (var _i = 0, _a = program.getSourceFiles(); _i < _a.length; _i++) {
         var sourceFile = _a[_i];
-        if (!sourceFile.isDeclarationFile) {
+        if (!sourceFile.isDeclarationFile && fileNameRegExp.test(sourceFile.fileName)) {
             ts.forEachChild(sourceFile, visit);
         }
     }
@@ -1156,7 +1157,7 @@ function deTypescript(fileNames, options, code) {
 
     function isExcludedFromSource(node) {
         return edits.some(function (el) {
-            if (el.pos == node.pos + node.getLeadingTriviaWidth() && el.end == node.end) {
+            if (el.pos == node.pos + node.getLeadingTriviaWidth() && el.end == node.end || ts.isImportSpecifier(node)) {
                 return true;
             }
         });
@@ -1211,7 +1212,11 @@ function applyEdits(code, remove, edits) {
         for (var j = i - 1; j >= 0; j--) {
             if (edits[j + 1].pos >= edits[j].pos && edits[j + 1].end <= edits[j].end) {
                 if (edits[j + 1].pos != 0 && edits[j + 1].end != 0) {
-                    if (edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end) {
+                    if (edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end  || edits[j].end == edits[j + 1].pos) {
+                        if (!edits[j].afterEnd)
+                            edits[j].afterEnd = "";
+                        if (!edits[j + 1].afterEnd)
+                            edits[j + 1].afterEnd = "";
                         edits[j].afterEnd += edits[j + 1].afterEnd;
                     }
                     edits.splice(j + 1, 1);
