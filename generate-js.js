@@ -1,6 +1,7 @@
 "use strict";
 var ts = require("typescript");
 var fs = require("fs");
+var utilities = require("./utilities-ts");
 
 function createCompilerHost(options, code) {
     return {
@@ -1057,9 +1058,9 @@ function deTypescript(fileNames, options, code) {
                 constructionName = "default_" + defaultCounter;
                 if (!node.decorators) {
                     edits.push({
-                        pos: node.members.pos - 1,
-                        end: node.members.pos - 1,
-                        afterEnd: constructionName
+                        pos: (node.heritageClauses)? node.heritageClauses.pos + 1: node.members.pos - 1,
+                        end: (node.heritageClauses)? node.heritageClauses.pos + 1: node.members.pos - 1,
+                        afterEnd: constructionName + " "
                     });
                 }
             } else {
@@ -1136,9 +1137,7 @@ function deTypescript(fileNames, options, code) {
         if (node.moduleSpecifier) {
             var moduleName = node.moduleSpecifier.text;
             if (moduleName != undefined) {
-                let namePart = moduleName.split('/');
-                let modName = namePart[namePart.length - 1];
-                return (/[^a-zA-Z]/.test(modName[0])) ? "_" + modName : modName;
+                return utilities.makeIdentifierFromModuleName(moduleName);
             }
         }
     }
