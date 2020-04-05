@@ -105,7 +105,7 @@ function deTypescript(fileNames, options, code) {
 
     function visit(node) {
         switch (true) {
-            case (ts.isIdentifier(node)):
+            case (ts.isIdentifier(node) && !ts.isTypeReferenceNode(node.parent)):
                 transformReferencedIdentifier(node);
                 break;
             case (ts.isExportAssignment(node)):
@@ -341,29 +341,71 @@ function deTypescript(fileNames, options, code) {
 
     function transformImportEqualsDeclaration(node) {
         var textToPaste;
-        if (node.moduleReference && ts.isExternalModuleReference(node.moduleReference)) {
-            exportExists = true;
-            if (hasExportModifier(node)) {
-                textToPaste = getModuleName(node) + '.';
+        if (node.moduleReference) {
+            if (ts.isExternalModuleReference(node.moduleReference)) {
+                exportExists = true;
+                if (hasExportModifier(node)) {
+                    textToPaste = getModuleName(node) + '.';
+                } else {
+                    textToPaste = 'const ';
+                }
+                refParents.push({
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    aliasEnd: node.pos + node.getLeadingTriviaWidth(),
+                    afterEnd: textToPaste
+                });
+                textToPaste += getTextFromSourceFile(node.name.pos + 1, node.end);
             } else {
-                textToPaste = 'const ';
+                if (hasExportModifier(node)) {
+                    textToPaste = getModuleName(node) + '.';
+                } else {
+                    textToPaste = 'var '
+                }
+                refParents.push({
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    aliasEnd: node.pos + node.getLeadingTriviaWidth(),
+                    afterEnd: textToPaste,
+                    used: isDeeplyInsideModule(node)
+                });
+                let reference = getReferencedIdentifier(node.moduleReference);
+                textToPaste += node.name.getText() + " = " + reference.text + getTextFromSourceFile(node.moduleReference.pos + node.moduleReference.getLeadingTriviaWidth() + reference.shift, node.end);
             }
-        } else {
-            if (hasExportModifier(node)) {
-                textToPaste = getModuleName(node) + '.';
-            } else {
-                textToPaste = 'var '
-            }
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                end: node.end,
+                aliasEnd: node.pos + node.getLeadingTriviaWidth(),
+                afterEnd: textToPaste
+            });
         }
-        refParents.push({
-            pos: node.pos + node.getLeadingTriviaWidth(),
-            afterEnd: textToPaste
-        });
-        edits.push({
-            pos: node.pos + node.getLeadingTriviaWidth(),
-            end: node.name.pos + 1,
-            afterEnd: textToPaste
-        });
+
+        function getReferencedIdentifier(node) {
+            let identifier = node;
+            if (ts.isQualifiedName(node)) {
+                identifier = node.left;
+            }
+            let symbol = checker.getSymbolAtLocation(identifier);
+            if (symbol && !isTheSameStatement(identifier, symbol)) {
+                let declaration = findReferencedDeclaration(symbol);
+                if (declaration && declaration.afterEnd != "var " && declaration.afterEnd != "const ") {
+                    let shift = 0;
+                    if (declaration.replace === true) {
+                        shift = getIdentifierLength(identifier);
+                    }
+                    return {
+                        "text": declaration.afterEnd,
+                        "shift": shift
+                    };
+                }
+            }
+            return {
+                "text": "",
+                "shift": 0
+            };
+        }
+    }
+
+    function getIdentifierLength(node) {
+        return node.getText().length;
     }
 
     function transformClassElements(node) {
@@ -1065,6 +1107,15 @@ function deTypescript(fileNames, options, code) {
 
     function isInsideModule(node) {
         return (node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent));
+    }
+
+    function isDeeplyInsideModule(node) {
+        let parent = node;
+        while (parent.parent) {
+            parent = parent.parent;
+            if (ts.isModuleDeclaration(parent))
+                return true;
+        }
     }
 
     function isInsideFunction(node) {
