@@ -376,6 +376,9 @@ function deTypescript(fileNames, options, code) {
         if (ts.isQualifiedName(node)) {
             identifier = node.left;
         }
+        if (ts.isCallExpression(node)) {
+            identifier = node.expression;
+        }
         let symbol = checker.getSymbolAtLocation(identifier);
         if (symbol && !isTheSameStatement(identifier, symbol)) {
             let declaration = findReferencedDeclaration(symbol);
