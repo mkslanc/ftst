@@ -208,23 +208,11 @@ function deTypescript(fileNames, options, code) {
                 }
             });
             if (hasParametersDecorators(node) && !node.parent.decorators) {
-                var className;
-                if (hasDefaultModifier(node.parent) && !node.parent.name) {
-                    className = "default_" + defaultCounter;
-                } else {
-                    if (!node.parent.name)
-                        return;
-                    className = node.parent.name.getText();
-                }
-                let afterEnd = "let " + className + "= ";
-                edits.push({
-                    pos: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                    end: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                    afterEnd: afterEnd
-                });
-                var decorators = ";" + className + "= __decorate([";
+                classLet(node);
+                var className = getClassName(node.parent, true);
+                var decorators = ";" + className.constructionName + "= __decorate([";
                 decorators += commentOutParametersDecorators(node);
-                decorators = decorators.slice(0, -1) + "], " + className + ");";
+                decorators = decorators.slice(0, -1) + "], " + className.constructionName + ");";
                 edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
             }
         }
@@ -240,8 +228,10 @@ function deTypescript(fileNames, options, code) {
                 afterEnd: afterEnd
             });
             var decorators = ";" + className.constructionName + "= __decorate([";
+            let reference;
             for (var i = 0; i < node.decorators.length; i++) {
-                decorators += replaceTypeCastInDecorators(node.decorators[i].expression.getText()) + ",";
+                reference = getReferencedIdentifier(node.decorators[i].expression);
+                decorators += reference.text + replaceTypeCastInDecorators(node.decorators[i].expression.getText()) + ",";
             }
             //we need this if class has constructors with param decorator
             let constructor = getConstructor(node);
@@ -379,31 +369,31 @@ function deTypescript(fileNames, options, code) {
                 afterEnd: textToPaste
             });
         }
+    }
 
-        function getReferencedIdentifier(node) {
-            let identifier = node;
-            if (ts.isQualifiedName(node)) {
-                identifier = node.left;
-            }
-            let symbol = checker.getSymbolAtLocation(identifier);
-            if (symbol && !isTheSameStatement(identifier, symbol)) {
-                let declaration = findReferencedDeclaration(symbol);
-                if (declaration && declaration.afterEnd != "var " && declaration.afterEnd != "const ") {
-                    let shift = 0;
-                    if (declaration.replace === true) {
-                        shift = getIdentifierLength(identifier);
-                    }
-                    return {
-                        "text": declaration.afterEnd,
-                        "shift": shift
-                    };
-                }
-            }
-            return {
-                "text": "",
-                "shift": 0
-            };
+    function getReferencedIdentifier(node) {
+        let identifier = node;
+        if (ts.isQualifiedName(node)) {
+            identifier = node.left;
         }
+        let symbol = checker.getSymbolAtLocation(identifier);
+        if (symbol && !isTheSameStatement(identifier, symbol)) {
+            let declaration = findReferencedDeclaration(symbol);
+            if (declaration && declaration.afterEnd != "var " && declaration.afterEnd != "const ") {
+                let shift = 0;
+                if (declaration.replace === true) {
+                    shift = getIdentifierLength(identifier);
+                }
+                return {
+                    "text": declaration.afterEnd,
+                    "shift": shift
+                };
+            }
+        }
+        return {
+            "text": "",
+            "shift": 0
+        };
     }
 
     function getIdentifierLength(node) {
@@ -423,8 +413,10 @@ function deTypescript(fileNames, options, code) {
         if (node.decorators && node.decorators.length) {
             edits.push({pos: node.decorators.pos, end: node.decorators.end});
             var decorators = ";__decorate([";
+            let reference;
             for (var i = 0; i < node.decorators.length; i++) {
-                decorators += replaceTypeCastInDecorators(node.decorators[i].expression.getText()) + ",";
+                reference = getReferencedIdentifier(node.decorators[i].expression);
+                decorators += reference.text + replaceTypeCastInDecorators(node.decorators[i].expression.getText()) + ",";
             }
             if (ts.isPropertyDeclaration(node)) {
                 decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", void 0);";
@@ -452,7 +444,7 @@ function deTypescript(fileNames, options, code) {
     }
 
     function replaceTypeCastInDecorators(text) {
-        return text.replace(/\sas\s[^,]+(?=[,)])/g,"");
+        return text.replace(/\sas\s[^,]+(?=[,)])/g, "");
     }
 
     function transformReferencedIdentifier(node) {
@@ -778,6 +770,22 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
+    function classLet(node) {
+        let classParent = findClassParent(node);
+        if (classParent) {
+            let className = getClassName(classParent, true);
+            let classEnd = (classParent.decorators) ? classParent.decorators.end : classParent.pos + classParent.getLeadingTriviaWidth();
+            let afterEnd = "let " + className.constructionName + "= ";
+            if (!hasTheSameEdit(classParent.pos + classParent.getLeadingTriviaWidth(), classEnd, afterEnd)) {
+                edits.push({
+                    pos: classParent.pos + classParent.getLeadingTriviaWidth(),
+                    end: classEnd,
+                    afterEnd: afterEnd
+                });
+            }
+        }
+    }
+
     function commentOutParametersDecorators(node) {
         let decorators = '';
         let thisParam = getThisParameter(node);
@@ -789,7 +797,8 @@ function deTypescript(fileNames, options, code) {
                         end: node.parameters[i].decorators[j].end
                     });
                     let paramNum = (thisParam && thisParam.pos < node.parameters[i].pos) ? i - 1 : i;
-                    decorators += "__param(" + paramNum + "," + replaceTypeCastInDecorators(node.parameters[i].decorators[j].expression.getText()) + "),";
+                    let reference = getReferencedIdentifier(node.parameters[i].decorators[j].expression);
+                    decorators += "__param(" + paramNum + "," + reference.text + replaceTypeCastInDecorators(node.parameters[i].decorators[j].expression.getText()) + "),";
                 }
             }
         }
@@ -1050,16 +1059,17 @@ function deTypescript(fileNames, options, code) {
         edits.push({pos: node.end, end: node.end, order: 2, afterEnd: textToPaste});
     }
 
-    function getClassName(node) {
+    function getClassName(node, reusing = false) {
         var constructionName, dotPropertyName;
         if (hasDefaultModifier(node) || !node.name) {
             if (!node.name) {
-                defaultCounter++;
+                if (!reusing)
+                    defaultCounter++;
                 constructionName = "default_" + defaultCounter;
                 if (!node.decorators) {
                     edits.push({
-                        pos: (node.heritageClauses)? node.heritageClauses.pos + 1: node.members.pos - 1,
-                        end: (node.heritageClauses)? node.heritageClauses.pos + 1: node.members.pos - 1,
+                        pos: (node.heritageClauses) ? node.heritageClauses.pos + 1 : node.members.pos - 1,
+                        end: (node.heritageClauses) ? node.heritageClauses.pos + 1 : node.members.pos - 1,
                         afterEnd: constructionName + " "
                     });
                 }
@@ -1120,6 +1130,15 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
+    function findClassParent(node) {
+        let parent = node;
+        while (parent.parent) {
+            parent = parent.parent;
+            if (ts.isClassDeclaration(parent))
+                return parent;
+        }
+    }
+
     function isInsideFunction(node) {
         return (node.parent && node.parent.parent && ts.isFunctionDeclaration(node.parent.parent));
     }
@@ -1160,6 +1179,12 @@ function deTypescript(fileNames, options, code) {
                 return true;
             }
         });
+    }
+
+    function hasTheSameEdit(pos, end, afterEnd) {
+        return edits.some(function (el) {
+            return (el.pos === pos && el.end === end && el.afterEnd === afterEnd)
+        })
     }
 
     function commentOutUnusedDeclarations() {
@@ -1211,7 +1236,7 @@ function applyEdits(code, remove, edits) {
         for (var j = i - 1; j >= 0; j--) {
             if (edits[j + 1].pos >= edits[j].pos && edits[j + 1].end <= edits[j].end) {
                 if (edits[j + 1].pos != 0 && edits[j + 1].end != 0) {
-                    if (edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end  || edits[j].end == edits[j + 1].pos) {
+                    if (edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end || edits[j].end == edits[j + 1].pos || edits[j + 1].end == edits[j].pos) {
                         if (!edits[j].afterEnd)
                             edits[j].afterEnd = "";
                         if (!edits[j + 1].afterEnd)
