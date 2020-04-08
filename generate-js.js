@@ -170,9 +170,19 @@ function deTypescript(fileNames, options, code) {
             case (node.kind === ts.SyntaxKind.ImportKeyword && ts.isCallExpression(node.parent)):
                 transformDynamicImport(node);
                 break;
+            case (ts.isNonNullExpression(node)):
+                commentOutNonNullExpression(node);
+                break;
         }
         commentOutTypes(node);
         ts.forEachChild(node, visit);
+    }
+
+    function commentOutNonNullExpression(node) {
+        edits.push({
+            pos: node.end - 1,
+            end: node.end
+        });
     }
 
     function transformDynamicImport(node) {
