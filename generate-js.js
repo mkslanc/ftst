@@ -756,7 +756,8 @@ function deTypescript(fileNames, options, code) {
             edits.push({pos: coords.pos, end: coords.end, afterEnd: " "});
         }
         if (node.typeArguments) {
-            edits.push({pos: node.typeArguments.pos - 1, end: node.typeArguments.end + 1});
+            let coords = getTypeAssertionPosAndEnd(node);
+            edits.push({pos: coords.pos, end: coords.end});
         }
         if (node.questionToken && ts.isParameter(node)) {
             edits.push({pos: node.questionToken.pos, end: node.questionToken.end});
