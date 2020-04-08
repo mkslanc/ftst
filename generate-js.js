@@ -63,10 +63,10 @@ function generateJavaScriptFile(path, options) {
         } catch (e) {
             return;
         }
-        if (stat.isFile() && /\.ts$/.test(path)) {
+        if (stat.isFile() && /([^d]|[^.]d)\.ts$/.test(path)) {
             var fileArr = [];
             fileArr.push(path);
-            var filename = path.replace(".ts", "Js.js");
+            var filename = path.replace(/.ts$/, "Js.js");
             fs.copyFileSync(path, filename);
             let edits = deTypescript(fileArr, options);
             applyEditsToFile(filename, edits);
@@ -107,7 +107,7 @@ function deTypescript(fileNames, options, code) {
 
     function visit(node) {
         switch (true) {
-            case (ts.isIdentifier(node) && !ts.isTypeReferenceNode(node.parent)):
+            case (ts.isIdentifier(node) && !ts.isTypeReferenceNode(node.parent) && !ts.isTypeQueryNode(node.parent)):
                 transformReferencedIdentifier(node);
                 break;
             case (ts.isExportAssignment(node)):
@@ -1283,4 +1283,3 @@ if (process.argv.length > 2) {
         target: ts.ScriptTarget.ES5, module: "None", allowJs: false, lib: [], types: [], noEmit: true
     });
 }
-
