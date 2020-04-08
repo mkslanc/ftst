@@ -742,14 +742,18 @@ function deTypescript(fileNames, options, code) {
                 pos = node.type.pos - 1;
             }
             if (ts.isTypeAssertion(node)) {
-                end = node.type.end + 1;
+                let coords = getTypeAssertionPosAndEnd(node);
+                end = coords.end;
             } else {
                 end = node.type.end;
             }
-            edits.push({pos: pos, end: end});
+            if (pos && end)
+                edits.push({pos: pos, end: end});
         }
         if (node.typeParameters) {
-            edits.push({pos: node.typeParameters.pos - 1, end: node.typeParameters.end + 1});
+            //i couldn't found better way to solve multiline type parameters
+            let coords = getTypeAssertionPosAndEnd(node);
+            edits.push({pos: coords.pos, end: coords.end, afterEnd: " "});
         }
         if (node.typeArguments) {
             edits.push({pos: node.typeArguments.pos - 1, end: node.typeArguments.end + 1});
@@ -757,6 +761,20 @@ function deTypescript(fileNames, options, code) {
         if (node.questionToken && ts.isParameter(node)) {
             edits.push({pos: node.questionToken.pos, end: node.questionToken.end});
         }
+    }
+
+    function getTypeAssertionPosAndEnd(node) {
+        let pos, end;
+        let children = node.getChildren();
+        for (var i = 0; i < children.length; i++) {
+            if (children[i].kind === ts.SyntaxKind.LessThanToken) {
+                pos = children[i].pos;
+            }
+            if (children[i].kind === ts.SyntaxKind.GreaterThanToken) {
+                end = children[i].end;
+            }
+        }
+        return {"pos": pos, "end": end}
     }
 
     function hasDeclareModifier(node, commentOut = false) {
