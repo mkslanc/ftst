@@ -209,7 +209,7 @@ function deTypescript(fileNames, options, code) {
             let parameterPos = getPositionForParameters(node.body);
             node.parameters.forEach(function (param) {
                 if (hasControllingAccessModifier(param)) {
-                    textToPaste = "this." + param.name.getText() + " = " + param.name.getText() + ";";
+                    textToPaste = ";this." + param.name.getText() + " = " + param.name.getText() + ";";
                     edits.push({
                         pos: parameterPos,
                         end: parameterPos,
@@ -461,15 +461,24 @@ function deTypescript(fileNames, options, code) {
     }
 
     function transformReferencedIdentifier(node) {
-        let symbol2 = checker.getSymbolAtLocation(node);
-        if (symbol2 && !isTheSameStatement(node, symbol2)) {
-            let textToPaste = findReferencedDeclaration(symbol2);
-
-            if (textToPaste && textToPaste.afterEnd != "var " && textToPaste.afterEnd != "const " && !isAlreadyReferenced(node, textToPaste.afterEnd)) {
+        let referencedSymbol;
+        if (ts.isShorthandPropertyAssignment(node.parent)) {
+            referencedSymbol = checker.getShorthandAssignmentValueSymbol(node.parent);
+        } else {
+            let symbol2 = checker.getSymbolAtLocation(node);
+            if (symbol2 && !isTheSameStatement(node, symbol2)) {
+                referencedSymbol = symbol2;
+            }
+        }
+        if (referencedSymbol) {
+            let declaration = findReferencedDeclaration(referencedSymbol);
+            if (declaration && declaration.afterEnd != "var " && declaration.afterEnd != "const " && !isAlreadyReferenced(node, declaration.afterEnd)) {
+                if (ts.isShorthandPropertyAssignment(node.parent))
+                    declaration.afterEnd = node.getText() + ": " + declaration.afterEnd;
                 edits.push({
                     pos: node.pos + node.getLeadingTriviaWidth(),
-                    end: (textToPaste.replace) ? node.end : node.pos + node.getLeadingTriviaWidth(),
-                    afterEnd: textToPaste.afterEnd
+                    end: (declaration.replace) ? node.end : node.pos + node.getLeadingTriviaWidth(),
+                    afterEnd: declaration.afterEnd
                 });
             }
         }
