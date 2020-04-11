@@ -462,7 +462,8 @@ function deTypescript(fileNames, options, code) {
 
     function transformReferencedIdentifier(node) {
         let referencedSymbol;
-        if (ts.isShorthandPropertyAssignment(node.parent)) {
+        let isShortHand = ts.isShorthandPropertyAssignment(node.parent);
+        if (isShortHand) {
             referencedSymbol = checker.getShorthandAssignmentValueSymbol(node.parent);
         } else {
             let symbol2 = checker.getSymbolAtLocation(node);
@@ -472,13 +473,18 @@ function deTypescript(fileNames, options, code) {
         }
         if (referencedSymbol) {
             let declaration = findReferencedDeclaration(referencedSymbol);
-            if (declaration && declaration.afterEnd != "var " && declaration.afterEnd != "const " && !isAlreadyReferenced(node, declaration.afterEnd)) {
-                if (ts.isShorthandPropertyAssignment(node.parent))
-                    declaration.afterEnd = node.getText() + ": " + declaration.afterEnd;
+            let declarationExists = declaration && declaration.afterEnd != "var " && declaration.afterEnd != "const " && !isAlreadyReferenced(node, declaration.afterEnd);
+            if (declarationExists) {
+                let textToPaste;
+                if (declaration) {
+                    textToPaste = declaration.afterEnd;
+                } else if (isShortHand) {
+                    textToPaste = node.getText() + ": " + declaration.afterEnd;
+                }
                 edits.push({
                     pos: node.pos + node.getLeadingTriviaWidth(),
                     end: (declaration.replace) ? node.end : node.pos + node.getLeadingTriviaWidth(),
-                    afterEnd: declaration.afterEnd
+                    afterEnd: textToPaste
                 });
             }
         }
@@ -617,6 +623,7 @@ function deTypescript(fileNames, options, code) {
 
     function isAlreadyReferenced(node, parentText) {
         //TODO: bad code, need to improve in future
+        //TODO: unicode names like moduleType\u0031; identifiers with ();
         let parent = node.parent.getText();
         return parent.search(parentText + node.getText()) > -1;
     }
@@ -1133,12 +1140,12 @@ function deTypescript(fileNames, options, code) {
                 end: node.declarationList.declarations[0].pos
             });
             node.declarationList.declarations.forEach(function (decl) {
+                let textToPaste = moduleName + ".";
+                refParents.push({
+                    pos: decl.pos + decl.getLeadingTriviaWidth(),
+                    afterEnd: textToPaste,
+                });
                 if (decl.initializer) {
-                    let textToPaste = moduleName + ".";
-                    refParents.push({
-                        pos: decl.pos + decl.getLeadingTriviaWidth(),
-                        afterEnd: textToPaste,
-                    });
                     edits.push({
                         pos: decl.pos + decl.getLeadingTriviaWidth(),
                         end: decl.pos + decl.getLeadingTriviaWidth(),
