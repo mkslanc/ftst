@@ -173,6 +173,8 @@ function deTypescript(fileNames, options, code) {
             case (ts.isNonNullExpression(node)):
                 commentOutNonNullExpression(node);
                 break;
+            case (ts.isTypeReferenceNode(node)):
+                return;
         }
         commentOutTypes(node);
         ts.forEachChild(node, visit);
@@ -297,7 +299,8 @@ function deTypescript(fileNames, options, code) {
         if (moduleReferenceName != undefined) {
             exportExists = true;
             if (node.importClause) {
-                if (node.importClause.name || (node.importClause.namedBindings && node.importClause.namedBindings.elements)) {
+                let nameBindingsExists = node.importClause.namedBindings && node.importClause.namedBindings.elements && node.importClause.namedBindings.elements.length > 0;
+                if (node.importClause.name || nameBindingsExists) {
                     if (!moduleReferencesNames[moduleReferenceName]) {
                         moduleReferencesNames[moduleReferenceName] = 0;
                     }
@@ -476,11 +479,12 @@ function deTypescript(fileNames, options, code) {
             let declarationExists = declaration && declaration.afterEnd != "var " && declaration.afterEnd != "const " && !isAlreadyReferenced(node, declaration.afterEnd);
             if (declarationExists) {
                 let textToPaste;
-                if (declaration) {
-                    textToPaste = declaration.afterEnd;
-                } else if (isShortHand) {
+                if (isShortHand) {
                     textToPaste = node.getText() + ": " + declaration.afterEnd;
+                } else if (declaration) {
+                    textToPaste = declaration.afterEnd;
                 }
+
                 edits.push({
                     pos: node.pos + node.getLeadingTriviaWidth(),
                     end: (declaration.replace) ? node.end : node.pos + node.getLeadingTriviaWidth(),
