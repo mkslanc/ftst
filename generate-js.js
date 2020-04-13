@@ -320,7 +320,8 @@ function deTypescript(fileNames, options, code) {
                         pos: node.importClause.namedBindings.pos + node.importClause.namedBindings.getLeadingTriviaWidth(),
                         aliasEnd: node.importClause.namedBindings.name.pos,
                         afterEnd: "",
-                        moduleName: moduleReferenceNameBinding
+                        moduleName: moduleReferenceNameBinding,
+                        varName: moduleReferenceNameBinding
                     });
                     if (!modulesIdentifiers[moduleReferenceNameBinding]) {
                         modulesIdentifiers[moduleReferenceNameBinding] = moduleReferenceNameBinding;
@@ -347,17 +348,27 @@ function deTypescript(fileNames, options, code) {
     function transformImportEqualsDeclaration(node) {
         var textToPaste;
         if (node.moduleReference) {
+            let varName = node.name.getText();
             if (ts.isExternalModuleReference(node.moduleReference)) {
                 exportExists = true;
+                let moduleName = utilities.makeIdentifierFromModuleName(node.moduleReference.expression.text);
+
                 if (hasExportModifier(node)) {
                     textToPaste = getModuleName(node) + '.';
                 } else {
                     textToPaste = 'const ';
+                    if (!modulesIdentifiers[varName]) {
+                        modulesIdentifiers[varName] = moduleName;
+                    }
                 }
                 refParents.push({
                     pos: node.pos + node.getLeadingTriviaWidth(),
                     aliasEnd: node.pos + node.getLeadingTriviaWidth(),
-                    afterEnd: textToPaste
+                    afterEnd: textToPaste,
+                    used: (textToPaste === "exports."),
+                    moduleName: moduleName,
+                    isImportEquals: true,
+                    varName: varName
                 });
                 textToPaste += getTextFromSourceFile(node.name.pos + 1, node.end);
             } else {
@@ -370,7 +381,8 @@ function deTypescript(fileNames, options, code) {
                     pos: node.pos + node.getLeadingTriviaWidth(),
                     aliasEnd: node.pos + node.getLeadingTriviaWidth(),
                     afterEnd: textToPaste,
-                    used: isDeeplyInsideModule(node)
+                    used: isDeeplyInsideModule(node),
+                    varName: varName
                 });
                 let reference = getReferencedIdentifier(node.moduleReference);
                 textToPaste += node.name.getText() + " = " + reference.text + getTextFromSourceFile(node.moduleReference.pos + node.moduleReference.getLeadingTriviaWidth() + reference.shift, node.end);
@@ -496,10 +508,9 @@ function deTypescript(fileNames, options, code) {
 
     function transformExportAssignment(node) {
         if (node.isExportEquals && node.isExportEquals == true) {
-            let symbol = checker.getSymbolAtLocation(node.expression);
-            if (symbol && symbol.valueDeclaration) {
-                //single module export allowed
-                if (moduleExportExists === true) {
+            if (ts.isSourceFile(node.parent)) {
+                let symbol = checker.getSymbolAtLocation(node.expression);
+                if (symbol && areNonEmitStatements(symbol.declarations)) {
                     edits.push({
                         pos: node.pos + node.getLeadingTriviaWidth(),
                         end: node.end
@@ -516,11 +527,6 @@ function deTypescript(fileNames, options, code) {
                         end: node.pos + node.getLeadingTriviaWidth() + 6, afterEnd: "s"
                     });
                 }
-            } else {
-                edits.push({
-                    pos: node.pos + node.getLeadingTriviaWidth(),
-                    end: node.end
-                });
             }
         } else {
             exportExists = true;
@@ -695,14 +701,16 @@ function deTypescript(fileNames, options, code) {
                         aliasEnd: node.importClause.pos,
                         afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + "." + el.propertyName.getText(),
                         replace: true,
-                        moduleName: moduleName + "_" + moduleReferencesNames[moduleName]
+                        moduleName: moduleName + "_" + moduleReferencesNames[moduleName],
+                        varName: el.propertyName
                     });
                 } else {
                     refParents.push({
                         pos: el.pos + el.getLeadingTriviaWidth(),
                         aliasEnd: node.importClause.pos,
                         afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".",
-                        moduleName: moduleName + "_" + moduleReferencesNames[moduleName]
+                        moduleName: moduleName + "_" + moduleReferencesNames[moduleName],
+                        varName: elName
                     });
                 }
             });
@@ -725,18 +733,19 @@ function deTypescript(fileNames, options, code) {
 
     function setExportedIdentifiers(node, moduleName) {
         node.exportClause.elements.forEach(function (el) {
+            let moduleNameFromImport = moduleName;
             let elPropertyName = (el.propertyName) ? el.propertyName.getText() : el.name.getText();
             let elName = el.name.getText();
-            let text;
+            let text, transform;
             if (isImportedIdentifier(elPropertyName) && !moduleName) {
-                moduleName = modulesIdentifiers[elPropertyName];
-                let transform = findReferencedTransformByModule(moduleName);
+                moduleNameFromImport = modulesIdentifiers[elPropertyName];
+                transform = findReferencedTransformByModule(moduleNameFromImport, elPropertyName);
                 if (transform) {
                     transform.used = true;
                 }
             }
-            if (moduleName) {
-                let identifier = (/_[\d]+$/.test(moduleName)) ? moduleName + "." + elPropertyName : moduleName;
+            if (moduleNameFromImport && (!transform || transform && !transform.isImportEquals)) {
+                let identifier = (/_[\d]+$/.test(moduleNameFromImport)) ? moduleNameFromImport + "." + elPropertyName : moduleNameFromImport;
                 text = "exports." + elName + " = " + identifier + ";";
             } else {
                 text = "exports." + elName + " = " + elPropertyName + ";";
@@ -918,8 +927,9 @@ function deTypescript(fileNames, options, code) {
     }
 
     function areNonEmitStatements(statements) {
+        //TODO: this should work also from commented edits from source
         return statements.every(function (statement) {
-            return (ts.isInterfaceDeclaration(statement));
+            return (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement));
         })
     }
 
@@ -1219,9 +1229,9 @@ function deTypescript(fileNames, options, code) {
         });
     }
 
-    function findReferencedTransformByModule(moduleName) {
+    function findReferencedTransformByModule(moduleName, varName) {
         return refParents.find(function (el) {
-            return (el.moduleName === moduleName)
+            return (el.moduleName === moduleName && el.varName === varName)
         });
     }
 
