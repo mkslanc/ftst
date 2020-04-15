@@ -151,13 +151,13 @@ function deTypescript(fileNames, options, code) {
                 break;
             case (ts.isImportEqualsDeclaration(node)):
                 transformImportEqualsDeclaration(node);
-                break;
+                return;
             case (ts.isImportDeclaration(node)):
                 transformImportDeclaration(node);
-                break;
+                return;
             case (ts.isExportDeclaration(node)):
                 transformExportDeclaration(node);
-                break;
+                return;
             case (ts.isClassDeclaration(node)):
                 transformClass(node);
                 break;
@@ -169,10 +169,12 @@ function deTypescript(fileNames, options, code) {
                 break;
             case (node.kind === ts.SyntaxKind.ImportKeyword && ts.isCallExpression(node.parent)):
                 transformDynamicImport(node);
-                break;
+                return;
             case (ts.isNonNullExpression(node)):
                 commentOutNonNullExpression(node);
                 break;
+            case ts.isTypeQueryNode(node):
+            case (ts.isTypeParameterDeclaration(node)):
             case (ts.isTypeReferenceNode(node)):
                 return;
         }
@@ -240,8 +242,8 @@ function deTypescript(fileNames, options, code) {
                 afterEnd: afterEnd
             });
             var decorators = ";" + className.constructionName + "= __decorate([";
-            let reference;
-            for (var i = 0; i < node.decorators.length; i++) {
+            let reference, decoratorsLength = node.decorators.length;
+            for (var i = 0; i < decoratorsLength; i++) {
                 reference = getReferencedIdentifier(node.decorators[i].expression);
                 decorators += reference.text + replaceTypeCastInDecorators(node.decorators[i].expression.getText()) + ",";
             }
@@ -398,12 +400,14 @@ function deTypescript(fileNames, options, code) {
 
     function getReferencedIdentifier(node) {
         let identifier = node;
-        if (ts.isQualifiedName(node)) {
-            identifier = node.left;
-        }
         if (ts.isCallExpression(node)) {
             identifier = node.expression;
+        } else {
+            while (ts.isQualifiedName(identifier)) {
+                identifier = identifier.left;
+            }
         }
+
         let symbol = checker.getSymbolAtLocation(identifier);
         if (symbol && !isTheSameStatement(identifier, symbol)) {
             let declaration = findReferencedDeclaration(symbol);
@@ -441,8 +445,8 @@ function deTypescript(fileNames, options, code) {
         if (node.decorators && node.decorators.length) {
             edits.push({pos: node.decorators.pos, end: node.decorators.end});
             var decorators = ";__decorate([";
-            let reference;
-            for (var i = 0; i < node.decorators.length; i++) {
+            let reference, decoratorsLength = node.decorators.length;
+            for (var i = 0; i < decoratorsLength; i++) {
                 reference = getReferencedIdentifier(node.decorators[i].expression);
                 decorators += reference.text + replaceTypeCastInDecorators(node.decorators[i].expression.getText()) + ",";
             }
@@ -653,7 +657,8 @@ function deTypescript(fileNames, options, code) {
             }
         } else {
             if (symbol.declarations) {
-                for (var i = 0; i < symbol.declarations.length; i++) {
+                let declarationsLength = symbol.declarations.length;
+                for (var i = 0; i < declarationsLength; i++) {
                     let transform = findReferencedTransformByEndPos(symbol.declarations[i].pos + symbol.declarations[i].getLeadingTriviaWidth());
                     if (transform) {
                         transform.used = true;
@@ -796,7 +801,8 @@ function deTypescript(fileNames, options, code) {
     function getTypeAssertionPosAndEnd(node) {
         let pos, end;
         let children = node.getChildren();
-        for (var i = 0; i < children.length; i++) {
+        let childrenLength = children.length;
+        for (var i = 0; i < childrenLength; i++) {
             if (children[i].kind === ts.SyntaxKind.LessThanToken) {
                 pos = children[i].pos;
             }
@@ -850,9 +856,11 @@ function deTypescript(fileNames, options, code) {
     function commentOutParametersDecorators(node) {
         let decorators = '';
         let thisParam = getThisParameter(node);
-        for (var i = 0; i < node.parameters.length; i++) {
+        let parametersLength = node.parameters.length;
+        for (var i = 0; i < parametersLength; i++) {
             if (node.parameters[i].decorators && node.parameters[i].decorators.length) {
-                for (var j = 0; j < node.parameters[i].decorators.length; j++) {
+                let decoratorsLength = node.parameters[i].decorators.length;
+                for (var j = 0; j < decoratorsLength; j++) {
                     edits.push({
                         pos: node.parameters[i].decorators[j].pos,
                         end: node.parameters[i].decorators[j].end
@@ -939,7 +947,8 @@ function deTypescript(fileNames, options, code) {
         var enumMemberTransform = [];
         if (node.members && node.members.length > 0) {
             initializer = 0;
-            for (var i = 0; i < node.members.length; i++) {
+            let membersLength = node.members.length;
+            for (var i = 0; i < membersLength; i++) {
                 computed = false;
                 if (node.members[i].initializer) {
                     if (node.members[i].initializer.kind == ts.SyntaxKind.ThisKeyword) {
