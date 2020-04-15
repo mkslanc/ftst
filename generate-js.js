@@ -879,6 +879,11 @@ function deTypescript(fileNames, options, code) {
         let moduleName = node.name.getText();
         let nestedModule = node;
         while (nestedModule.body.name) {
+            refParents.push({
+                pos: nestedModule.body.name.pos + nestedModule.body.name.getLeadingTriviaWidth(),
+                aliasEnd: nestedModule.body.name.pos + nestedModule.body.name.getLeadingTriviaWidth(),
+                afterEnd: nestedModule.name.getText() + '.'
+            });
             nestedModule = nestedModule.body;
         }
         if (nestedModule.body.statements && nestedModule.body.statements.length > 0 && !areNonEmitStatements(nestedModule.body.statements)) {
