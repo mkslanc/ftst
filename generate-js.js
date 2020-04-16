@@ -93,11 +93,13 @@ function deTypescript(fileNames, options, code) {
     var modulesIdentifiers = {};
     var textToPaste;
     var fileNameRegExp = new RegExp(fileNames[0]);
-
-    for (var _i = 0, _a = program.getSourceFiles(); _i < _a.length; _i++) {
-        var sourceFile = _a[_i];
-        if (!sourceFile.isDeclarationFile && fileNameRegExp.test(sourceFile.fileName)) {
-            ts.forEachChild(sourceFile, visit);
+    let syntacticErrors = program.getSyntacticDiagnostics();
+    if (syntacticErrors.length === 0) {
+        for (var _i = 0, _a = program.getSourceFiles(); _i < _a.length; _i++) {
+            var sourceFile = _a[_i];
+            if (!sourceFile.isDeclarationFile && fileNameRegExp.test(sourceFile.fileName)) {
+                ts.forEachChild(sourceFile, visit);
+            }
         }
     }
 
