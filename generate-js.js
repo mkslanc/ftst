@@ -269,26 +269,32 @@ function deTypescript(fileNames, options, code) {
 
     function transformExportDeclaration(node) {
         exportExists = true;
-        if (node.exportClause && node.exportClause.elements && node.exportClause.elements.length > 0) {
-            var moduleReferenceName = getModuleSpecifierName(node);
-            if (moduleReferenceName != undefined) {
-                if (!moduleReferencesNames[moduleReferenceName]) {
-                    moduleReferencesNames[moduleReferenceName] = 0;
+        if (node.exportClause && (node.exportClause.elements && node.exportClause.elements.length > 0 || node.exportClause.name)) {
+            if (node.exportClause.elements && node.exportClause.elements.length > 0) {
+                var moduleReferenceName = getModuleSpecifierName(node);
+                if (moduleReferenceName != undefined) {
+                    if (!moduleReferencesNames[moduleReferenceName]) {
+                        moduleReferencesNames[moduleReferenceName] = 0;
+                    }
+                    moduleReferencesNames[moduleReferenceName]++;
+                    setExportedIdentifiers(node, getComposedReferenceName(moduleReferenceName));
+                    textToPaste = "var " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        end: node.end,
+                        afterEnd: textToPaste
+                    });
+                } else {
+                    setExportedIdentifiers(node);
+                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                 }
-                moduleReferencesNames[moduleReferenceName]++;
-                setExportedIdentifiers(node, getComposedReferenceName(moduleReferenceName));
-                textToPaste = "var " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
-                edits.push({
-                    pos: node.pos + node.getLeadingTriviaWidth(),
-                    end: node.end,
-                    afterEnd: textToPaste
-                });
-            } else {//TODO: checker.getSymbolAtLocation(node.exportClause.elements[0].propertyName)
-                setExportedIdentifiers(node);
-                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+            }
+            if (node.exportClause.name) {
+                textToPaste = "exports." + node.exportClause.name.getText() + " = require(" + node.moduleSpecifier.getText() + ");";
+                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
             }
         } else {
-            if (node.moduleSpecifier) {
+            if (node.moduleSpecifier && !node.exportClause) {
                 exportWrapperExists = true;
                 textToPaste = '__export(require(' + node.moduleSpecifier.getText() + "));";
             } else {
@@ -317,7 +323,7 @@ function deTypescript(fileNames, options, code) {
                         afterEnd: textToPaste
                     });
                 }
-                if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.name) {
+                if (node.importClause.namedBindings && node.importClause.namedBindings.name) {
                     let moduleReferenceNameBinding = node.importClause.namedBindings.name.getText();
                     textToPaste = "const " + moduleReferenceNameBinding + " = require(\"" + node.moduleSpecifier.text + "\");";
                     refParents.push({
@@ -1272,7 +1278,7 @@ function deTypescript(fileNames, options, code) {
             });
             if (!el.used && !aliasUsed) {
                 let currentEdit = edits.find(function (edit) {
-                    return (edit.aliasEnd && edit.aliasEnd == el.aliasEnd);
+                    return (edit.aliasEnd !== undefined && edit.aliasEnd == el.aliasEnd);
                 });
                 if (currentEdit)
                     currentEdit.afterEnd = '';
