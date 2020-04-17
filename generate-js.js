@@ -387,15 +387,20 @@ function deTypescript(fileNames, options, code) {
                 } else {
                     textToPaste = 'var '
                 }
-                refParents.push({
-                    pos: node.pos + node.getLeadingTriviaWidth(),
-                    aliasEnd: node.pos + node.getLeadingTriviaWidth(),
-                    afterEnd: textToPaste,
-                    used: isDeeplyInsideModule(node),
-                    varName: varName
-                });
-                let reference = getReferencedIdentifier(node.moduleReference);
-                textToPaste += node.name.getText() + " = " + reference.text + getTextFromSourceFile(node.moduleReference.pos + node.moduleReference.getLeadingTriviaWidth() + reference.shift, node.end);
+                if (!isNonEmittedIdentifier(node.moduleReference)) {
+                    refParents.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        aliasEnd: node.pos + node.getLeadingTriviaWidth(),
+                        afterEnd: textToPaste,
+                        used: isDeeplyInsideModule(node),
+                        varName: varName
+                    });
+                    let reference = getReferencedIdentifier(node.moduleReference);
+                    textToPaste += node.name.getText() + " = " + reference.text + getTextFromSourceFile(node.moduleReference.pos + node.moduleReference.getLeadingTriviaWidth() + reference.shift, node.end);
+                } else {
+                    textToPaste = '';
+                }
+
             }
             edits.push({
                 pos: node.pos + node.getLeadingTriviaWidth(),
@@ -404,6 +409,23 @@ function deTypescript(fileNames, options, code) {
                 afterEnd: textToPaste
             });
         }
+    }
+
+    function isNonEmittedIdentifier(expr) {
+        var identifier = expr;
+        switch (expr.kind) {
+            case ts.SyntaxKind.QualifiedName:
+                while (identifier.right) {
+                    identifier = identifier.right;
+                }
+            case ts.SyntaxKind.Identifier:
+                let symbol = checker.getSymbolAtLocation(identifier);
+                if (symbol && symbol.declarations && areNonEmitStatements(symbol.declarations)) {
+                    return true;
+                }
+                break;
+        }
+        return false;
     }
 
     function getReferencedIdentifier(node) {
