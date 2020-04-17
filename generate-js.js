@@ -510,6 +510,8 @@ function deTypescript(fileNames, options, code) {
     }
 
     function transformReferencedIdentifier(node) {
+        if (ts.isPropertyAccessExpression(node.parent) && node.parent.name.pos === node.pos)
+            return;
         let referencedSymbol;
         let isShortHand = ts.isShorthandPropertyAssignment(node.parent);
         if (isShortHand) {
