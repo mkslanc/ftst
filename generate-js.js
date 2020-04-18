@@ -566,12 +566,19 @@ function deTypescript(fileNames, options, code) {
             }
         } else {
             exportExists = true;
-            edits.push({
-                pos: node.pos + node.getLeadingTriviaWidth() + 6,
-                end: node.pos + node.getLeadingTriviaWidth() + 7,
-                afterEnd: "s."
-            });
-            edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd: " ="});
+            if (!isNonEmittedIdentifier(node.expression)) {
+                edits.push({
+                    pos: node.pos + node.getLeadingTriviaWidth() + 6,
+                    end: node.pos + node.getLeadingTriviaWidth() + 7,
+                    afterEnd: "s."
+                });
+                edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd: " ="});
+            } else {
+                edits.push({
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    end: node.end
+                });
+            }
         }
     }
 
