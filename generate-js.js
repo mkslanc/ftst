@@ -523,7 +523,7 @@ function deTypescript(fileNames, options, code) {
             }
         }
         if (referencedSymbol) {
-            let declaration = findReferencedDeclaration(referencedSymbol);
+            let declaration = findReferencedDeclaration(referencedSymbol, node);
             let declarationExists = declaration && declaration.afterEnd != "var " && declaration.afterEnd != "const " && !isAlreadyReferenced(node, declaration.afterEnd);
             if (declarationExists) {
                 let textToPaste;
@@ -680,10 +680,12 @@ function deTypescript(fileNames, options, code) {
         });
     }
 
-    function findReferencedDeclaration(symbol) {
+    function findReferencedDeclaration(symbol, node) {
         if (symbol.valueDeclaration) {//priority for value declaration
             let transform = findReferencedTransformByEndPos(symbol.valueDeclaration.pos + symbol.valueDeclaration.getLeadingTriviaWidth());
             if (transform) {
+                if (node && transform.isExportedClass && symbol.parent && symbol.parent.valueDeclaration && isInsideCoords(node, symbol.parent.valueDeclaration))
+                    return;
                 transform.used = true;
                 return transform;
             }
@@ -1163,6 +1165,14 @@ function deTypescript(fileNames, options, code) {
     function transformExportClass(node, className) {
         let moduleName = getModuleName(node);
         var constructionName = className.constructionName, dotPropertyName = className.dotPropertyName;
+        if (moduleName != "exports") {
+            refParents.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                aliasEnd: node.pos + node.getLeadingTriviaWidth(),
+                afterEnd: moduleName + '.',
+                isExportedClass: true
+            });
+        }
         let textToPaste = ";" + moduleName + "." + dotPropertyName + " = " + constructionName + ";";
         edits.push({pos: node.end, end: node.end, order: 2, afterEnd: textToPaste});
     }
@@ -1328,6 +1338,10 @@ function deTypescript(fileNames, options, code) {
     return edits;
 }
 
+function isInsideCoords(firstObject, secondObject) {
+    return firstObject.pos >= secondObject.pos && firstObject.end <= secondObject.end;
+}
+
 function applyEditsToFile(filename, edits) {
     var start = fs.readFileSync(filename, "utf8");
     start = start.replace(/^\uFEFF/, '');
@@ -1342,7 +1356,7 @@ function applyEdits(code, remove, edits) {
 
     for (var i = 1; i < edits.length; i++) {
         for (var j = i - 1; j >= 0; j--) {
-            if (edits[j + 1].pos >= edits[j].pos && edits[j + 1].end <= edits[j].end) {
+            if (isInsideCoords(edits[j + 1], edits[j])) {
                 if (edits[j + 1].pos != 0 && edits[j + 1].end != 0) {
                     if (edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end || edits[j].end == edits[j + 1].pos || edits[j + 1].end == edits[j].pos) {
                         if (!edits[j].afterEnd)
