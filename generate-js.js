@@ -269,38 +269,42 @@ function deTypescript(fileNames, options, code) {
 
     function transformExportDeclaration(node) {
         exportExists = true;
-        if (node.exportClause && (node.exportClause.elements && node.exportClause.elements.length > 0 || node.exportClause.name)) {
-            if (node.exportClause.elements && node.exportClause.elements.length > 0) {
-                var moduleReferenceName = getModuleSpecifierName(node);
-                if (moduleReferenceName != undefined) {
-                    if (!moduleReferencesNames[moduleReferenceName]) {
-                        moduleReferencesNames[moduleReferenceName] = 0;
+        if (!node.isTypeOnly) {
+            if (node.exportClause && (node.exportClause.elements && node.exportClause.elements.length > 0 || node.exportClause.name)) {
+                if (node.exportClause.elements && node.exportClause.elements.length > 0) {
+                    var moduleReferenceName = getModuleSpecifierName(node);
+                    if (moduleReferenceName != undefined) {
+                        if (!moduleReferencesNames[moduleReferenceName]) {
+                            moduleReferencesNames[moduleReferenceName] = 0;
+                        }
+                        moduleReferencesNames[moduleReferenceName]++;
+                        setExportedIdentifiers(node, getComposedReferenceName(moduleReferenceName));
+                        textToPaste = "var " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
+                        edits.push({
+                            pos: node.pos + node.getLeadingTriviaWidth(),
+                            end: node.end,
+                            afterEnd: textToPaste
+                        });
+                    } else {
+                        setExportedIdentifiers(node);
+                        edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                     }
-                    moduleReferencesNames[moduleReferenceName]++;
-                    setExportedIdentifiers(node, getComposedReferenceName(moduleReferenceName));
-                    textToPaste = "var " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
-                    edits.push({
-                        pos: node.pos + node.getLeadingTriviaWidth(),
-                        end: node.end,
-                        afterEnd: textToPaste
-                    });
-                } else {
-                    setExportedIdentifiers(node);
-                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
                 }
-            }
-            if (node.exportClause.name) {
-                textToPaste = "exports." + node.exportClause.name.getText() + " = require(" + node.moduleSpecifier.getText() + ");";
+                if (node.exportClause.name) {
+                    textToPaste = "exports." + node.exportClause.name.getText() + " = require(" + node.moduleSpecifier.getText() + ");";
+                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
+                }
+            } else {
+                if (node.moduleSpecifier && !node.exportClause) {
+                    exportWrapperExists = true;
+                    textToPaste = '__export(require(' + node.moduleSpecifier.getText() + "));";
+                } else {
+                    textToPaste = '';
+                }
                 edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
             }
         } else {
-            if (node.moduleSpecifier && !node.exportClause) {
-                exportWrapperExists = true;
-                textToPaste = '__export(require(' + node.moduleSpecifier.getText() + "));";
-            } else {
-                textToPaste = '';
-            }
-            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
+            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
         }
     }
 
@@ -309,45 +313,49 @@ function deTypescript(fileNames, options, code) {
         if (moduleReferenceName != undefined) {
             exportExists = true;
             if (node.importClause) {
-                let nameBindingsExists = node.importClause.namedBindings && node.importClause.namedBindings.elements && node.importClause.namedBindings.elements.length > 0;
-                if (node.importClause.name || nameBindingsExists) {
-                    if (!moduleReferencesNames[moduleReferenceName]) {
-                        moduleReferencesNames[moduleReferenceName] = 0;
+                if (!node.importClause.isTypeOnly) {
+                    let nameBindingsExists = node.importClause.namedBindings && node.importClause.namedBindings.elements && node.importClause.namedBindings.elements.length > 0;
+                    if (node.importClause.name || nameBindingsExists) {
+                        if (!moduleReferencesNames[moduleReferenceName]) {
+                            moduleReferencesNames[moduleReferenceName] = 0;
+                        }
+                        moduleReferencesNames[moduleReferenceName]++;
+                        textToPaste = "const " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
+                        edits.push({
+                            pos: node.end,
+                            end: node.end,
+                            aliasEnd: node.importClause.pos,
+                            afterEnd: textToPaste
+                        });
                     }
-                    moduleReferencesNames[moduleReferenceName]++;
-                    textToPaste = "const " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
-                    edits.push({
-                        pos: node.end,
-                        end: node.end,
-                        aliasEnd: node.importClause.pos,
-                        afterEnd: textToPaste
-                    });
-                }
-                if (node.importClause.namedBindings && node.importClause.namedBindings.name) {
-                    let moduleReferenceNameBinding = node.importClause.namedBindings.name.getText();
-                    textToPaste = "const " + moduleReferenceNameBinding + " = require(\"" + node.moduleSpecifier.text + "\");";
-                    refParents.push({
-                        pos: node.importClause.namedBindings.pos + node.importClause.namedBindings.getLeadingTriviaWidth(),
-                        aliasEnd: node.importClause.namedBindings.name.pos,
-                        afterEnd: "",
-                        moduleName: moduleReferenceNameBinding,
-                        varName: moduleReferenceNameBinding
-                    });
-                    if (!modulesIdentifiers[moduleReferenceNameBinding]) {
-                        modulesIdentifiers[moduleReferenceNameBinding] = moduleReferenceNameBinding;
+                    if (node.importClause.namedBindings && node.importClause.namedBindings.name) {
+                        let moduleReferenceNameBinding = node.importClause.namedBindings.name.getText();
+                        textToPaste = "const " + moduleReferenceNameBinding + " = require(\"" + node.moduleSpecifier.text + "\");";
+                        refParents.push({
+                            pos: node.importClause.namedBindings.pos + node.importClause.namedBindings.getLeadingTriviaWidth(),
+                            aliasEnd: node.importClause.namedBindings.name.pos,
+                            afterEnd: "",
+                            moduleName: moduleReferenceNameBinding,
+                            varName: moduleReferenceNameBinding
+                        });
+                        if (!modulesIdentifiers[moduleReferenceNameBinding]) {
+                            modulesIdentifiers[moduleReferenceNameBinding] = moduleReferenceNameBinding;
+                        }
+                        edits.push({
+                            pos: node.end,
+                            end: node.end,
+                            aliasEnd: node.importClause.namedBindings.name.pos,
+                            afterEnd: textToPaste
+                        });
                     }
-                    edits.push({
-                        pos: node.end,
-                        end: node.end,
-                        aliasEnd: node.importClause.namedBindings.name.pos,
-                        afterEnd: textToPaste
-                    });
+                    setImportedIdentifiers(node, moduleReferenceName);
                 }
             } else {
                 textToPaste = "require(\"" + node.moduleSpecifier.text + "\");";
                 edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+                setImportedIdentifiers(node, moduleReferenceName);
             }
-            setImportedIdentifiers(node, moduleReferenceName);
+
             edits.push({
                 pos: node.pos + node.getLeadingTriviaWidth(),
                 end: node.end
@@ -552,16 +560,23 @@ function deTypescript(fileNames, options, code) {
                         end: node.end
                     });
                 } else {
-                    moduleExportExists = true;
-                    edits.push({
-                        pos: node.pos + node.getLeadingTriviaWidth(),
-                        end: node.pos + node.getLeadingTriviaWidth(),
-                        afterEnd: "module."
-                    });
-                    edits.push({
-                        pos: node.pos + node.getLeadingTriviaWidth() + 6,
-                        end: node.pos + node.getLeadingTriviaWidth() + 6, afterEnd: "s"
-                    });
+                    if (!moduleExportExists) {
+                        moduleExportExists = true;
+                        edits.push({
+                            pos: node.pos + node.getLeadingTriviaWidth(),
+                            end: node.pos + node.getLeadingTriviaWidth(),
+                            afterEnd: "module."
+                        });
+                        edits.push({
+                            pos: node.pos + node.getLeadingTriviaWidth() + 6,
+                            end: node.pos + node.getLeadingTriviaWidth() + 6, afterEnd: "s"
+                        });
+                    } else {
+                        edits.push({
+                            pos: node.pos + node.getLeadingTriviaWidth(),
+                            end: node.end
+                        });
+                    }
                 }
             }
         } else {
