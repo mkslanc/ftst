@@ -9,14 +9,14 @@ function createCompilerHost(options, code) {
         getDefaultLibFileName: function () {
             return ts.getDefaultLibFileName(options)
         },
-        writeFile: function (fileName, content) {
-            return ts.sys.writeFile(fileName, content);
+        writeFile: function () {
+            return "";
         },
         getCurrentDirectory: function () {
-            return ts.sys.getCurrentDirectory();
+            return "";
         },
-        getDirectories: function (path) {
-            return ts.sys.getDirectories(path);
+        getDirectories: function () {
+            return [];
         },
         getCanonicalFileName: function (fileName) {
             return ts.sys.useCaseSensitiveFileNames ? fileName : fileName.toLowerCase();
@@ -29,27 +29,27 @@ function createCompilerHost(options, code) {
         },
         fileExists: fileExists,
         readFile: readFile,
-        directoryExists: function (path) {
-            return ts.sys.directoryExists(path);
+        directoryExists: function () {
+            return true;
         }
     };
 
-    function fileExists(fileName) {
-        return ts.sys.fileExists(fileName);
+    function fileExists() {
+        return true;
     }
 
-    function readFile(fileName) {
-        return ts.sys.readFile(fileName);
+    function readFile() {
+        return "";
     }
 
-    function getSourceFile(fileName, languageVersion, onError) {
+    function getSourceFile(fileName) {
         if (!code) {
             var sourceText = ts.sys.readFile(fileName);
         } else {
             var sourceText = code;
         }
         return sourceText !== undefined
-            ? ts.createSourceFile(fileName, sourceText, languageVersion, false, ts.ScriptKind.TS)
+            ? ts.createSourceFile(fileName, sourceText, options.target)
             : undefined;
     }
 }
@@ -95,7 +95,8 @@ function deTypescript(fileNames, options, code) {
     var fileNameRegExp = new RegExp(fileNames[0]);
     let syntacticErrors = program.getSyntacticDiagnostics();
     if (syntacticErrors.length === 0) {
-        for (var _i = 0, _a = program.getSourceFiles(); _i < _a.length; _i++) {
+        let sources = program.getSourceFiles();
+        for (var _i = 0, _a = sources; _i < _a.length; _i++) {
             var sourceFile = _a[_i];
             if (!sourceFile.isDeclarationFile && fileNameRegExp.test(sourceFile.fileName)) {
                 ts.forEachChild(sourceFile, visit);
@@ -1409,6 +1410,6 @@ exports.transpileTypescriptCode = transpileTypescriptCode;
 
 if (process.argv.length > 2) {
     generateJavaScriptFile(process.argv.slice(2), {
-        target: ts.ScriptTarget.ES5, module: "None", allowJs: false, lib: [], types: [], noEmit: true
+        target: ts.ScriptTarget.ESNext, module: "None", allowJs: false, lib: [], types: [], noEmit: true, noLib: true, noResolve: true, isolatedModules: true, suppressOutputPathCheck: true
     });
 }
