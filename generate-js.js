@@ -130,7 +130,7 @@ function deTypescript(fileNames, options, code) {
             case (hasDeclareModifier(node)):
             case (ts.isIndexSignatureDeclaration(node)):
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
-                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+                commentOutNode(node);
                 return;
             case (ts.isParameter(node) && node.name && node.name.getText() == "this"):
                 commentOutThisFromParameters(node);
@@ -184,6 +184,21 @@ function deTypescript(fileNames, options, code) {
         ts.forEachChild(node, visit);
     }
 
+    function commentOutNode(node, textToPaste) {
+        if (textToPaste) {
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                end: node.end,
+                afterEnd: textToPaste
+            });
+        } else {
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                end: node.end
+            });
+        }
+    }
+
     function commentOutNonNullExpression(node) {
         edits.push({
             pos: node.end - 1,
@@ -192,11 +207,7 @@ function deTypescript(fileNames, options, code) {
     }
 
     function transformDynamicImport(node) {
-        edits.push({
-            pos: node.pos + node.getLeadingTriviaWidth(),
-            end: node.end,
-            afterEnd: "Promise.resolve().then(() => require"
-        });
+        commentOutNode(node, "Promise.resolve().then(() => require");
         edits.push({
             pos: node.parent.end,
             end: node.parent.end,
@@ -206,10 +217,7 @@ function deTypescript(fileNames, options, code) {
 
     function transformConstructor(node) {
         if (node.decorators) {//decorators for constructors are not allowed
-            edits.push({
-                pos: node.decorators.pos,
-                end: node.decorators.end
-            });
+            commentOutNode(node.decorators);
         }
         if (node.body && node.parameters && node.parameters.length > 0) {
             let parameterPos = getPositionForParameters(node.body);
@@ -280,19 +288,15 @@ function deTypescript(fileNames, options, code) {
                         moduleReferencesNames[moduleReferenceName]++;
                         setExportedIdentifiers(node, getComposedReferenceName(moduleReferenceName));
                         textToPaste = "var " + moduleReferenceName + "_" + moduleReferencesNames[moduleReferenceName] + " = require(\"" + node.moduleSpecifier.text + "\");";
-                        edits.push({
-                            pos: node.pos + node.getLeadingTriviaWidth(),
-                            end: node.end,
-                            afterEnd: textToPaste
-                        });
+                        commentOutNode(node, textToPaste);
                     } else {
                         setExportedIdentifiers(node);
-                        edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+                        commentOutNode(node);
                     }
                 }
                 if (node.exportClause.name) {
                     textToPaste = "exports." + node.exportClause.name.getText() + " = require(" + node.moduleSpecifier.getText() + ");";
-                    edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
+                    commentOutNode(node, textToPaste);
                 }
             } else {
                 if (node.moduleSpecifier && !node.exportClause) {
@@ -301,10 +305,10 @@ function deTypescript(fileNames, options, code) {
                 } else {
                     textToPaste = '';
                 }
-                edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end, afterEnd: textToPaste});
+                commentOutNode(node, textToPaste);
             }
         } else {
-            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+            commentOutNode(node);
         }
     }
 
@@ -355,11 +359,7 @@ function deTypescript(fileNames, options, code) {
                 edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
                 setImportedIdentifiers(node, moduleReferenceName);
             }
-
-            edits.push({
-                pos: node.pos + node.getLeadingTriviaWidth(),
-                end: node.end
-            });
+            commentOutNode(node);
         }
     }
 
@@ -506,10 +506,10 @@ function deTypescript(fileNames, options, code) {
             }
         }
         if (ts.isPropertyDeclaration(node) && !node.initializer && !ts.isPrivateIdentifier(node.name)) {
-            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+            commentOutNode(node);
         }
         if (ts.isMethodDeclaration(node) && node.questionToken) {
-            edits.push({pos: node.questionToken.pos, end: node.questionToken.end});
+            commentOutNode(node.questionToken);
         }
     }
 
@@ -555,10 +555,7 @@ function deTypescript(fileNames, options, code) {
             if (ts.isSourceFile(node.parent)) {
                 let symbol = checker.getSymbolAtLocation(node.expression);
                 if (symbol && areNonEmitStatements(symbol.declarations)) {
-                    edits.push({
-                        pos: node.pos + node.getLeadingTriviaWidth(),
-                        end: node.end
-                    });
+                    commentOutNode(node);
                 } else {
                     if (!moduleExportExists) {
                         moduleExportExists = true;
@@ -572,10 +569,7 @@ function deTypescript(fileNames, options, code) {
                             end: node.pos + node.getLeadingTriviaWidth() + 6, afterEnd: "s"
                         });
                     } else {
-                        edits.push({
-                            pos: node.pos + node.getLeadingTriviaWidth(),
-                            end: node.end
-                        });
+                        commentOutNode(node);
                     }
                 }
             }
@@ -589,10 +583,7 @@ function deTypescript(fileNames, options, code) {
                 });
                 edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd: " ="});
             } else {
-                edits.push({
-                    pos: node.pos + node.getLeadingTriviaWidth(),
-                    end: node.end
-                });
+                commentOutNode(node);
             }
         }
     }
@@ -850,7 +841,7 @@ function deTypescript(fileNames, options, code) {
             edits.push({pos: coords.pos, end: coords.end});
         }
         if (node.questionToken && ts.isParameter(node)) {
-            edits.push({pos: node.questionToken.pos, end: node.questionToken.end});
+            commentOutNode(node.questionToken);
         }
     }
 
@@ -874,7 +865,7 @@ function deTypescript(fileNames, options, code) {
             return node.modifiers.some(function (el) {
                 if (el.kind == ts.SyntaxKind.DeclareKeyword) {
                     if (commentOut === true) {
-                        edits.push({pos: el.pos + el.getLeadingTriviaWidth(), end: el.end});
+                        commentOutNode(el);
                     }
                     return true
                 }
@@ -886,7 +877,7 @@ function deTypescript(fileNames, options, code) {
         if (node.modifiers && node.modifiers.length > 0) {
             return node.modifiers.some(function (el) {
                 if (el.kind == ts.SyntaxKind.DefaultKeyword) {
-                    edits.push({pos: el.pos + el.getLeadingTriviaWidth(), end: el.end});
+                    commentOutNode(el);
                     return true
                 }
             });
@@ -917,10 +908,7 @@ function deTypescript(fileNames, options, code) {
             if (node.parameters[i].decorators && node.parameters[i].decorators.length) {
                 let decoratorsLength = node.parameters[i].decorators.length;
                 for (var j = 0; j < decoratorsLength; j++) {
-                    edits.push({
-                        pos: node.parameters[i].decorators[j].pos,
-                        end: node.parameters[i].decorators[j].end
-                    });
+                    commentOutNode(node.parameters[i].decorators[j]);
                     let paramNum = (thisParam && thisParam.pos < node.parameters[i].pos) ? i - 1 : i;
                     let reference = getReferencedIdentifier(node.parameters[i].decorators[j].expression);
                     decorators += "__param(" + paramNum + "," + reference.text + replaceTypeCastInDecorators(node.parameters[i].decorators[j].expression.getText()) + "),";
@@ -991,7 +979,7 @@ function deTypescript(fileNames, options, code) {
                 edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
             }
         } else {
-            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.end});
+            commentOutNode(node);
         }
     }
 
@@ -1143,7 +1131,7 @@ function deTypescript(fileNames, options, code) {
         if (node.modifiers && node.modifiers.length > 0) {
             return node.modifiers.some(function (el) {
                 if (el.kind == ts.SyntaxKind.ExportKeyword) {
-                    edits.push({pos: el.pos + el.getLeadingTriviaWidth(), end: el.end});
+                    commentOutNode(el);
                     return true
                 }
             });
