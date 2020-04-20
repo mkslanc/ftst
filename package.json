@@ -2,6 +2,9 @@
   "name": "ignore-typescript-types",
   "version": "0.0.1",
   "dependencies": {
+    "colors": "^1.4.0",
+    "diff": "^4.0.2",
+    "dir-compare": "^2.2.0",
     "typescript": "latest"
   }
 }
