@@ -218,7 +218,10 @@ function deTypescript(fileNames, options, code) {
 
     function transformConstructor(node) {
         if (node.decorators) {//decorators for constructors are not allowed
-            commentOutNode(node.decorators);
+            edits.push({
+                pos: node.decorators.pos,
+                end: node.decorators.end
+            });
         }
         if (node.body && node.parameters && node.parameters.length > 0) {
             let parameterPos = getPositionForParameters(node.body);
