@@ -1,7 +1,7 @@
 var ts = require("typescript");
 var dts = require("./generate-js");
 //Example from TypeScript Handbook
-const source = "import \"reflect-metadata\";\n" +
+var source = "import \"reflect-metadata\";\n" +
     "\n" +
     "class Point {\n" +
     "    x: number;\n" +
@@ -32,7 +32,7 @@ const source = "import \"reflect-metadata\";\n" +
     "    }\n" +
     "}";
 
-let result = dts.transpileTypescriptCode(source, {
+let result = dts.transpileModule(source, {
     target: ts.ScriptTarget.ES5,
     module: "None",
     allowJs: false,

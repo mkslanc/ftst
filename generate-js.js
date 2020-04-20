@@ -69,7 +69,7 @@ function generateJavaScriptFile(path, options) {
             var filename = path.replace(/.ts$/, "Js.js");
             fs.copyFileSync(path, filename);
             let edits = deTypescript(fileArr, options);
-            applyEditsToFile(filename, edits);
+            applyEditsToFile(filename, edits.edits);
         } else if (stat.isDirectory()) {
             var files = fs.readdirSync(path).sort();
             files.forEach(function (name) {
@@ -1349,7 +1349,7 @@ function deTypescript(fileNames, options, code) {
             afterEnd: "function __export(m) { for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];}"
         });
     }
-    return edits;
+    return {edits: edits, diagnostics: syntacticErrors};
 }
 
 function isInsideCoords(firstObject, secondObject) {
@@ -1405,11 +1405,28 @@ function applyEdits(code, remove, edits) {
     return end;
 }
 
-var transpileTypescriptCode = function transpileTypescriptCode(code, options, remove) {
-    let edits = deTypescript(['transpile-dummy.ts'], options, code);
-    return applyEdits(code, remove, edits);
+var transpile = function (code, options, remove) {
+    return transpileModule(code, options, remove).outputText;
 };
-exports.transpileTypescriptCode = transpileTypescriptCode;
+
+/*
+     * This function will compile source text from 'input' argument using specified compiler options.
+     * Extra compiler options that will unconditionally be used by this function are:
+     * - isolatedModules = true
+     * - noLib = true
+     * - noResolve = true
+     */
+var transpileModule = function (code, options, remove) {
+    options.noResolve = true;
+    options.isolatedModules = true;
+    options.noLib = true;
+    let edits = deTypescript(['transpile-dummy.ts'], options, code);
+    return {outputText: applyEdits(code, remove, edits.edits), diagnostics: edits.diagnostics};
+};
+
+exports.transpile = transpile;
+exports.transpileModule = transpileModule;
+exports.ModuleKind = ts.ModuleKind;
 
 if (process.argv.length > 2) {
     generateJavaScriptFile(process.argv.slice(2), {
