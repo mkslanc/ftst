@@ -1218,23 +1218,48 @@ function deTypescript(fileNames, options, code) {
 
     function transformExportVariable(node) {
         if (node.declarationList && node.declarationList.declarations) {
-            let moduleName = getModuleName(node);
-            edits.push({
-                pos: node.pos + node.getLeadingTriviaWidth(),
-                end: node.declarationList.declarations[0].pos
-            });
+            var moduleName = getModuleName(node);
+            var needDeclare = false;
+
             node.declarationList.declarations.forEach(function (decl) {
-                let textToPaste = moduleName + ".";
+                textToPaste = moduleName + ".";
                 refParents.push({
                     pos: decl.pos + decl.getLeadingTriviaWidth(),
                     afterEnd: textToPaste,
                 });
                 if (decl.initializer) {
-                    edits.push({
-                        pos: decl.pos + decl.getLeadingTriviaWidth(),
-                        end: decl.pos + decl.getLeadingTriviaWidth(),
-                        afterEnd: textToPaste
-                    });
+                    //TODO: maybe i should use way typescript develepers used
+                    if (ts.isArrayBindingPattern(decl.name) || ts.isObjectBindingPattern(decl.name)) {
+                        needDeclare = true;
+                        textToPaste = ';';
+                        if (ts.isArrayBindingPattern(decl.name)) {
+                            let elementsLength = decl.name.elements.length;
+                            for (var i = 0; i < elementsLength; i++) {
+                                if (decl.name.elements[i].name) {
+                                    let elName = decl.name.elements[i].name.getText();
+                                    textToPaste += moduleName + "." + elName + " = " + elName + ";";
+                                    refParents.push({
+                                        pos: decl.name.elements[i].pos + decl.name.elements[i].getLeadingTriviaWidth(),
+                                        afterEnd: moduleName + ".",
+                                    });
+                                }
+                            }
+                        }
+                        if (ts.isObjectBindingPattern(decl.name)) {
+                            transformObjectBindingPatternElements(decl.name);
+                        }
+                        edits.push({
+                            pos: decl.end,
+                            end: decl.end,
+                            afterEnd: textToPaste
+                        });
+                    } else {
+                        edits.push({
+                            pos: decl.pos + decl.getLeadingTriviaWidth(),
+                            end: decl.pos + decl.getLeadingTriviaWidth(),
+                            afterEnd: textToPaste
+                        });
+                    }
                 } else {
                     edits.push({
                         pos: decl.pos + decl.getLeadingTriviaWidth(),
@@ -1242,6 +1267,30 @@ function deTypescript(fileNames, options, code) {
                     });
                 }
             });
+            if (!needDeclare) {
+                edits.push({
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    end: node.declarationList.declarations[0].pos
+                });
+            }
+        }
+
+        function transformObjectBindingPatternElements(savedNode) {
+            let elementsLength = savedNode.elements.length;
+            for (var i = 0; i < elementsLength; i++) {
+                if (savedNode.elements[i].name) {
+                    if (savedNode.elements[i].name.elements) {
+                        transformObjectBindingPatternElements(savedNode.elements[i].name);
+                    } else {
+                        let elName = savedNode.elements[i].name.getText();
+                        textToPaste += moduleName + "." + elName + " = " + elName + ";";
+                        refParents.push({
+                            pos: savedNode.elements[i].pos + savedNode.elements[i].getLeadingTriviaWidth(),
+                            afterEnd: moduleName + ".",
+                        });
+                    }
+                }
+            }
         }
     }
 
