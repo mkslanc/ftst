@@ -453,7 +453,7 @@ function deTypescript(fileNames, options, code) {
 
         let symbol = checker.getSymbolAtLocation(identifier);
         if (symbol && !isTheSameStatement(identifier, symbol)) {
-            let declaration = findReferencedDeclaration(symbol);
+            let declaration = findReferencedDeclaration(symbol, node);
             if (declaration && declaration.afterEnd != "var " && declaration.afterEnd != "const ") {
                 let shift = 0;
                 if (declaration.replace === true) {
@@ -702,7 +702,7 @@ function deTypescript(fileNames, options, code) {
         if (symbol.valueDeclaration) {//priority for value declaration
             let transform = findReferencedTransformByEndPos(symbol.valueDeclaration.pos + symbol.valueDeclaration.getLeadingTriviaWidth());
             if (transform) {
-                if (node && transform.isExportedClass && symbol.parent && symbol.parent.valueDeclaration && isInsideCoords(node, symbol.parent.valueDeclaration))
+                if (node && (transform.isExportedClass || transform.isExportedFunction) && symbol.parent && symbol.parent.valueDeclaration && isInsideCoords(node, symbol.parent.valueDeclaration))
                     return;
                 transform.used = true;
                 return transform;
@@ -713,6 +713,8 @@ function deTypescript(fileNames, options, code) {
                 for (var i = 0; i < declarationsLength; i++) {
                     let transform = findReferencedTransformByEndPos(symbol.declarations[i].pos + symbol.declarations[i].getLeadingTriviaWidth());
                     if (transform) {
+                        if (node && (transform.isExportedClass || transform.isExportedFunction) && symbol.parent && symbol.parent.valueDeclaration && isInsideCoords(node, symbol.parent.valueDeclaration))
+                            return;
                         transform.used = true;
                         return transform;
                     }
@@ -1173,6 +1175,13 @@ function deTypescript(fileNames, options, code) {
             constructionName = node.name.getText();
             dotPropertyName = constructionName;
         }
+        if (moduleName != "exports")
+            refParents.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                aliasEnd: node.pos + node.getLeadingTriviaWidth(),
+                afterEnd: moduleName + '.',
+                isExportedFunction: true
+            });
         let textToPaste = moduleName + "." + dotPropertyName + " = " + constructionName + ";";
         edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
     }
