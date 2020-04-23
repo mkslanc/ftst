@@ -128,7 +128,8 @@ function deTypescript(fileNames, options, code) {
             case ((ts.isGetAccessor(node) || ts.isSetAccessor(node)) && !node.body):
             case (node.kind && node.kind == ts.SyntaxKind.Constructor && !node.body):
             case (ts.isHeritageClause(node) && node.token && node.token == ts.SyntaxKind.ImplementsKeyword):
-            case (hasDeclareModifier(node)):
+                //I don't know why typescript transforms declare identifiers, but here we are
+            case (hasDeclareModifier(node) && !(ts.isVariableStatement(node) && hasExportModifier(node))):
             case (ts.isIndexSignatureDeclaration(node)):
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 commentOutNode(node);
@@ -1223,12 +1224,12 @@ function deTypescript(fileNames, options, code) {
 
             node.declarationList.declarations.forEach(function (decl) {
                 textToPaste = moduleName + ".";
-                refParents.push({
-                    pos: decl.pos + decl.getLeadingTriviaWidth(),
-                    afterEnd: textToPaste,
-                });
+                    refParents.push({
+                        pos: decl.name.pos + decl.name.getLeadingTriviaWidth(),
+                        afterEnd: textToPaste,
+                    });
                 if (decl.initializer) {
-                    //TODO: maybe i should use way typescript develepers used
+                    //TODO: maybe i should use way typescript developers used
                     if (ts.isArrayBindingPattern(decl.name) || ts.isObjectBindingPattern(decl.name)) {
                         needDeclare = true;
                         textToPaste = ';';
@@ -1254,10 +1255,16 @@ function deTypescript(fileNames, options, code) {
                             afterEnd: textToPaste
                         });
                     } else {
+                        //TODO: solve situations with not normal commas with spaces
                         edits.push({
                             pos: decl.pos + decl.getLeadingTriviaWidth(),
                             end: decl.pos + decl.getLeadingTriviaWidth(),
                             afterEnd: textToPaste
+                        });
+                        edits.push({
+                            pos: decl.end,
+                            end: decl.end + 1,
+                            afterEnd: ";"
                         });
                     }
                 } else {
