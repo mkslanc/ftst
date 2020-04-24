@@ -824,7 +824,7 @@ function deTypescript(fileNames, options, code) {
     function commentOutTypes(node) {
         if (node.type) {//TODO: super type arguments which is not parsed in node tree
             var pos, end;
-            if (ts.isAsExpression(node) || (node.questionToken)) {
+            if (ts.isAsExpression(node) || (node.questionToken && isInsideCoords(node.questionToken, node.type))) {
                 pos = node.type.pos - 2;
             } else {
                 pos = node.type.pos - 1;
