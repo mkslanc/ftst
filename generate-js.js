@@ -104,8 +104,8 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
-    function getTextFromSourceFile(pos, end) {
-        return sourceFile.getFullText().slice(pos, end);
+    function getTextFromSourceFile(pos, end, source = sourceFile.getFullText()) {
+        return source.slice(pos, end);
     }
 
     function visit(node) {
@@ -257,10 +257,9 @@ function deTypescript(fileNames, options, code) {
                 afterEnd: afterEnd
             });
             var decorators = ";" + className.constructionName + "= __decorate([";
-            let reference, decoratorsLength = node.decorators.length;
+            let decoratorsLength = node.decorators.length;
             for (var i = 0; i < decoratorsLength; i++) {
-                reference = getReferencedIdentifier(node.decorators[i].expression);
-                decorators += reference.text + replaceTypeCastInDecorators(node.decorators[i].expression.getText()) + ",";
+                decorators += serveDecorators(node.decorators[i].expression) + ",";
             }
             //we need this if class has constructors with param decorator
             let constructor = getConstructor(node);
@@ -488,10 +487,9 @@ function deTypescript(fileNames, options, code) {
         if (node.decorators && node.decorators.length) {
             edits.push({pos: node.decorators.pos, end: node.decorators.end});
             var decorators = ";__decorate([";
-            let reference, decoratorsLength = node.decorators.length;
+            let decoratorsLength = node.decorators.length;
             for (var i = 0; i < decoratorsLength; i++) {
-                reference = getReferencedIdentifier(node.decorators[i].expression);
-                decorators += reference.text + replaceTypeCastInDecorators(node.decorators[i].expression.getText()) + ",";
+                decorators += serveDecorators(node.decorators[i].expression) + ",";
             }
             if (ts.isPropertyDeclaration(node)) {
                 decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", void 0);";
@@ -518,11 +516,39 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
+    function serveDecorators(expression) {
+        var localEdits = [];
+        if (ts.isCallExpression(expression)) {
+            ts.forEachChild(expression, serve);
+            localEdits = compensateByPos(localEdits, expression.pos);
+            return applyEdits(expression.getText(), true, localEdits);
+        } else {
+            let reference = getReferencedIdentifier(expression);
+            return reference.text + replaceTypeCastInDecorators(expression.getText());
+        }
+
+        function serve(node) {
+            if (ts.isIdentifier(node)) {
+                transformReferencedIdentifier(node, localEdits);
+            }
+            commentOutTypes(node, localEdits);
+            ts.forEachChild(node, serve);
+        }
+    }
+
+    function compensateByPos(edits, pos) {
+        edits.forEach(function (edit) {
+            edit.pos = edit.pos - pos;
+            edit.end = edit.end - pos;
+        });
+        return edits;
+    }
+
     function replaceTypeCastInDecorators(text) {
         return text.replace(/\sas\s[^,]+(?=[,)])/g, "");
     }
 
-    function transformReferencedIdentifier(node) {
+    function transformReferencedIdentifier(node, arr = edits) {
         if (ts.isPropertyAccessExpression(node.parent) && node.parent.name.pos === node.pos)
             return;
         let referencedSymbol;
@@ -546,7 +572,7 @@ function deTypescript(fileNames, options, code) {
                     textToPaste = declaration.afterEnd;
                 }
 
-                edits.push({
+                arr.push({
                     pos: node.pos + node.getLeadingTriviaWidth(),
                     end: (declaration.replace) ? node.end : node.pos + node.getLeadingTriviaWidth(),
                     afterEnd: textToPaste
@@ -821,7 +847,7 @@ function deTypescript(fileNames, options, code) {
         return moduleName + "_" + moduleReferencesNames[moduleName];
     }
 
-    function commentOutTypes(node) {
+    function commentOutTypes(node, arr = edits) {
         if (node.type) {//TODO: super type arguments which is not parsed in node tree
             var pos, end;
             if (ts.isAsExpression(node) || (node.questionToken && isInsideCoords(node.questionToken, node.type))) {
@@ -836,19 +862,22 @@ function deTypescript(fileNames, options, code) {
                 end = node.type.end;
             }
             if (pos && end)
-                edits.push({pos: pos, end: end});
+                arr.push({pos: pos, end: end});
         }
         if (node.typeParameters) {
             //i couldn't found better way to solve multiline type parameters
             let coords = getTypeAssertionPosAndEnd(node);
-            edits.push({pos: coords.pos, end: coords.end, afterEnd: " "});
+            arr.push({pos: coords.pos, end: coords.end, afterEnd: " "});
         }
         if (node.typeArguments) {
             let coords = getTypeAssertionPosAndEnd(node);
-            edits.push({pos: coords.pos, end: coords.end});
+            arr.push({pos: coords.pos, end: coords.end});
         }
         if (node.questionToken && ts.isParameter(node)) {
-            commentOutNode(node.questionToken);
+            arr.push({
+                pos: node.questionToken.pos + node.questionToken.getLeadingTriviaWidth(),
+                end: node.questionToken.end
+            });
         }
     }
 
@@ -1428,9 +1457,7 @@ function applyEditsToFile(filename, edits) {
     fs.writeFileSync(filename, end);
 }
 
-function applyEdits(code, remove, edits) {
-    var start = code;
-    var end = "";
+function serveEdits(edits) {
     edits.sort((a, b) => b.end - a.end || a.order - b.order);
 
     for (var i = 1; i < edits.length; i++) {
@@ -1450,7 +1477,14 @@ function applyEdits(code, remove, edits) {
             }
         }
     }
+    return edits;
+}
 
+function applyEdits(code, remove, edits) {
+    var start = code;
+    var end = "";
+
+    edits = serveEdits(edits);
     edits.forEach(edit => {
         let afterEnd = (edit.afterEnd) ? edit.afterEnd : "";
         if (edit.pos === edit.end) {
