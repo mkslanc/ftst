@@ -131,6 +131,7 @@ function deTypescript(fileNames, options, code) {
                 //I don't know why typescript transforms declare identifiers, but here we are
             case (hasDeclareModifier(node) && !(ts.isVariableStatement(node) && hasExportModifier(node))):
             case (ts.isIndexSignatureDeclaration(node)):
+            case (node.kind === ts.SyntaxKind.ExclamationToken):
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 commentOutNode(node);
                 return;
@@ -850,7 +851,7 @@ function deTypescript(fileNames, options, code) {
     function commentOutTypes(node, arr = edits) {
         if (node.type) {//TODO: super type arguments which is not parsed in node tree
             var pos, end;
-            if (ts.isAsExpression(node) || (node.questionToken && isInsideCoords(node.questionToken, node.type))) {
+            if (ts.isAsExpression(node)) {
                 pos = node.type.pos - 2;
             } else {
                 pos = node.type.pos - 1;
@@ -873,7 +874,7 @@ function deTypescript(fileNames, options, code) {
             let coords = getTypeAssertionPosAndEnd(node);
             arr.push({pos: coords.pos, end: coords.end});
         }
-        if (node.questionToken && ts.isParameter(node)) {
+        if (node.questionToken && (ts.isParameter(node) || ts.isPropertyDeclaration(node) || ts.isVariableDeclaration(node))) {
             arr.push({
                 pos: node.questionToken.pos + node.questionToken.getLeadingTriviaWidth(),
                 end: node.questionToken.end
