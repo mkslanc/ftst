@@ -645,7 +645,7 @@ function deTypescript(fileNames, options, code) {
     }
 
     function normalizeBracketsInArrowFunction(node) {
-        if (node.body && node.body.kind === ts.SyntaxKind.TypeAssertionExpression) {
+        if (node.body && node.body.kind === ts.SyntaxKind.TypeAssertionExpression && node.body.expression && ts.isObjectLiteralExpression(node.body.expression)) {
             let firstToken = node.body.getFirstToken();
             if (firstToken) {
                 let lastToken = node.body.getLastToken();
