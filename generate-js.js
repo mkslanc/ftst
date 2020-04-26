@@ -947,8 +947,7 @@ function deTypescript(fileNames, options, code) {
                 for (var j = 0; j < decoratorsLength; j++) {
                     commentOutNode(node.parameters[i].decorators[j]);
                     let paramNum = (thisParam && thisParam.pos < node.parameters[i].pos) ? i - 1 : i;
-                    let reference = getReferencedIdentifier(node.parameters[i].decorators[j].expression);
-                    decorators += "__param(" + paramNum + "," + reference.text + replaceTypeCastInDecorators(node.parameters[i].decorators[j].expression.getText()) + "),";
+                    decorators += "__param(" + paramNum + "," + serveDecorators(node.parameters[i].decorators[j].expression) + "),";
                 }
             }
         }
