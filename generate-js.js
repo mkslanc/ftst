@@ -405,7 +405,7 @@ function deTypescript(fileNames, options, code) {
                         pos: node.pos + node.getLeadingTriviaWidth(),
                         aliasEnd: node.pos + node.getLeadingTriviaWidth(),
                         afterEnd: textToPaste,
-                        used: isDeeplyInsideModule(node),
+                        used: isDeeplyInsideModule(node) || hasExportModifier(node),
                         varName: varName
                     });
                     let reference = getReferencedIdentifier(node.moduleReference);
@@ -1416,9 +1416,12 @@ function deTypescript(fileNames, options, code) {
 
     function commentOutUnusedDeclarations() {
         refParents.forEach(function (el) {
-            let aliasUsed = refParents.some(function (alias) {
-                return (alias.moduleName && el.moduleName == alias.moduleName && alias.used);
-            });
+            let aliasUsed;
+            if (!el.isImportEquals) {
+                aliasUsed = refParents.some(function (alias) {
+                    return (alias.moduleName && el.moduleName === alias.moduleName && alias.used);
+                });
+            }
             if (!el.used && !aliasUsed) {
                 let currentEdit = edits.find(function (edit) {
                     return (edit.aliasEnd !== undefined && edit.aliasEnd == el.aliasEnd);
