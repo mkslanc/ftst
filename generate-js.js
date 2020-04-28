@@ -93,12 +93,16 @@ function deTypescript(fileNames, options, code) {
     var modulesIdentifiers = {};
     var textToPaste;
     var fileNameRegExp = new RegExp(fileNames[0]);
+    var startPos = 0;
     let syntacticErrors = program.getSyntacticDiagnostics();
     if (syntacticErrors.length === 0) {
         let sources = program.getSourceFiles();
         for (var _i = 0, _a = sources; _i < _a.length; _i++) {
             var sourceFile = _a[_i];
             if (!sourceFile.isDeclarationFile && fileNameRegExp.test(sourceFile.fileName)) {
+                if (sourceFile.statements.length > 0) {
+                    startPos = sourceFile.statements[0].pos + sourceFile.statements[0].getLeadingTriviaWidth();
+                }
                 ts.forEachChild(sourceFile, visit);
             }
         }
@@ -202,8 +206,8 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
-    function commentOutNonNullExpression(node) {
-        edits.push({
+    function commentOutNonNullExpression(node, arr = edits) {
+        arr.push({
             pos: node.end - 1,
             end: node.end
         });
@@ -531,6 +535,8 @@ function deTypescript(fileNames, options, code) {
         function serve(node) {
             if (ts.isIdentifier(node)) {
                 transformReferencedIdentifier(node, localEdits);
+            } else if (ts.isNonNullExpression(node)) {
+                commentOutNonNullExpression(node, localEdits);
             }
             commentOutTypes(node, localEdits);
             ts.forEachChild(node, serve);
@@ -1434,16 +1440,18 @@ function deTypescript(fileNames, options, code) {
     commentOutUnusedDeclarations();
     if (exportExists && !moduleExportExists) {
         edits.push({
-            pos: 0,
-            end: 0,
-            afterEnd: "Object.defineProperty(exports, \"__esModule\", { value: true });"
+            pos: startPos,
+            end: startPos,
+            afterEnd: "Object.defineProperty(exports, \"__esModule\", { value: true });",
+            order: 0
         });
     }
     if (exportWrapperExists) {
         edits.push({
-            pos: 0,
-            end: 0,
-            afterEnd: "function __export(m) { for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];}"
+            pos: startPos,
+            end: startPos,
+            afterEnd: "function __export(m) { for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];}",
+            order: 1
         });
     }
     return {edits: edits, diagnostics: syntacticErrors};
@@ -1466,17 +1474,21 @@ function serveEdits(edits) {
     for (var i = 1; i < edits.length; i++) {
         for (var j = i - 1; j >= 0; j--) {
             if (isInsideCoords(edits[j + 1], edits[j])) {
-                if (edits[j + 1].pos != 0 && edits[j + 1].end != 0) {
-                    if (edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end || edits[j].end == edits[j + 1].pos || edits[j + 1].end == edits[j].pos) {
-                        if (!edits[j].afterEnd)
-                            edits[j].afterEnd = "";
-                        if (!edits[j + 1].afterEnd)
-                            edits[j + 1].afterEnd = "";
+                let cond1 = edits[j + 1].pos === edits[j].pos && edits[j + 1].end === edits[j].end || edits[j].end === edits[j + 1].pos;
+                let cond2 = edits[j + 1].end === edits[j].pos;
+                if (cond1 || cond2) {
+                    if (!edits[j].afterEnd)
+                        edits[j].afterEnd = "";
+                    if (!edits[j + 1].afterEnd)
+                        edits[j + 1].afterEnd = "";
+                    if (cond1) {
                         edits[j].afterEnd += edits[j + 1].afterEnd;
+                    } else {
+                        edits[j].afterEnd = edits[j + 1].afterEnd + edits[j].afterEnd;
                     }
-                    edits.splice(j + 1, 1);
-                    i--;
                 }
+                edits.splice(j + 1, 1);
+                i--;
             }
         }
     }
