@@ -232,7 +232,7 @@ function deTypescript(fileNames, options, code) {
         if (node.body && node.parameters && node.parameters.length > 0) {
             let parameterPos = getPositionForParameters(node.body);
             node.parameters.forEach(function (param) {
-                if (hasControllingAccessModifier(param)) {
+                if (hasControllingAccessModifier(param) && !ts.isArrayBindingPattern(param.name) && !ts.isObjectBindingPattern(param.name)) {
                     textToPaste = ";this." + param.name.getText() + " = " + param.name.getText() + ";";
                     edits.push({
                         pos: parameterPos,
