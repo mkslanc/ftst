@@ -481,6 +481,12 @@ function deTypescript(fileNames, options, code) {
 
     function transformClassElements(node) {
         var className;
+        if (ts.isPropertyDeclaration(node) && !node.initializer && !ts.isPrivateIdentifier(node.name)) {
+            commentOutNode(node);
+        }
+        if (ts.isMethodDeclaration(node) && node.questionToken) {
+            commentOutNode(node.questionToken);
+        }
         if (hasDefaultModifier(node.parent) && !node.parent.name) {
             className = "default_" + defaultCounter;
         } else {
@@ -512,12 +518,6 @@ function deTypescript(fileNames, options, code) {
                 decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
                 edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
             }
-        }
-        if (ts.isPropertyDeclaration(node) && !node.initializer && !ts.isPrivateIdentifier(node.name)) {
-            commentOutNode(node);
-        }
-        if (ts.isMethodDeclaration(node) && node.questionToken) {
-            commentOutNode(node.questionToken);
         }
     }
 
