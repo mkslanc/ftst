@@ -103,6 +103,7 @@ function deTypescript(fileNames, options, code) {
                 if (sourceFile.statements.length > 0) {
                     startPos = sourceFile.statements[0].pos + sourceFile.statements[0].getLeadingTriviaWidth();
                 }
+                ts.forEachChild(sourceFile, getReferences);
                 ts.forEachChild(sourceFile, visit);
             }
         }
@@ -110,6 +111,61 @@ function deTypescript(fileNames, options, code) {
 
     function getTextFromSourceFile(pos, end, source = sourceFile.getFullText()) {
         return source.slice(pos, end);
+    }
+
+    function getReferences(node) {
+        switch (true) {
+            case ts.isTypeAliasDeclaration(node):
+            case ts.isInterfaceDeclaration(node):
+            case (ts.isFunctionDeclaration(node) && !node.body):
+            case (ts.isMethodDeclaration(node) && !node.body):
+            case (node.kind && node.kind == ts.SyntaxKind.PrivateKeyword):
+            case (node.kind && node.kind == ts.SyntaxKind.PublicKeyword):
+            case (node.kind && node.kind == ts.SyntaxKind.ProtectedKeyword):
+            case (node.kind && node.kind == ts.SyntaxKind.ReadonlyKeyword):
+            case (node.kind && node.kind == ts.SyntaxKind.AbstractKeyword):
+            case ((ts.isGetAccessor(node) || ts.isSetAccessor(node)) && !node.body):
+            case (node.kind && node.kind == ts.SyntaxKind.Constructor && !node.body):
+            case (ts.isHeritageClause(node) && node.token && node.token == ts.SyntaxKind.ImplementsKeyword):
+            case (hasDeclareModifier(node) && !(ts.isVariableStatement(node) && hasExportModifier(node))):
+            case (ts.isIndexSignatureDeclaration(node)):
+            case (node.kind === ts.SyntaxKind.ExclamationToken):
+            case (ts.isParameter(node) && node.name && node.name.getText() == "this"):
+            case (ts.isEnumDeclaration(node) && !hasDeclareModifier(node)):
+            case (ts.isExportDeclaration(node)):
+            case (node.kind === ts.SyntaxKind.ImportKeyword && ts.isCallExpression(node.parent)):
+            case ts.isTypeQueryNode(node):
+            case (ts.isTypeParameterDeclaration(node)):
+            case (ts.isTypeReferenceNode(node)):
+                return;
+            case (node.body && ts.isModuleDeclaration(node) && !hasDeclareModifier(node)):
+                transformModule(node);
+                break;
+            case (ts.isVariableStatement(node) && hasExportModifier(node)):
+                transformExportVariable(node);
+                break;
+            case (ts.isImportDeclaration(node)):
+                transformImportDeclaration(node);
+                return;
+            case (ts.isImportEqualsDeclaration(node)):
+                getReferencesFromImportEquals(node);
+                return;
+            case (ts.isFunctionDeclaration(node) && hasExportModifier(node)):
+                transformExportFunction(node);
+                break;
+            case (ts.isClassDeclaration(node) && hasExportModifier(node)):
+                let moduleName = getModuleName(node);
+                if (moduleName != "exports") {
+                    refParents.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        aliasEnd: node.pos + node.getLeadingTriviaWidth(),
+                        afterEnd: moduleName + '.',
+                        isExportedClass: true
+                    });
+                }
+                break;
+        }
+        ts.forEachChild(node, getReferences);
     }
 
     function visit(node) {
@@ -145,24 +201,11 @@ function deTypescript(fileNames, options, code) {
             case (ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node) || ts.isGetAccessor(node) || ts.isSetAccessor(node)):
                 transformClassElements(node);
                 break;
-            case (node.body && ts.isModuleDeclaration(node) && !hasDeclareModifier(node)):
-                //TODO: maybe need some checks for crazy stuff like abstract namespace Example etc
-                transformModule(node);
-                break;
             case (ts.isEnumDeclaration(node) && !hasDeclareModifier(node)):
                 transformEnum(node);
                 return;
-            case (ts.isFunctionDeclaration(node) && hasExportModifier(node)):
-                transformExportFunction(node);
-                break;
-            case (ts.isVariableStatement(node) && hasExportModifier(node)):
-                transformExportVariable(node);
-                break;
             case (ts.isImportEqualsDeclaration(node)):
                 transformImportEqualsDeclaration(node);
-                return;
-            case (ts.isImportDeclaration(node)):
-                transformImportDeclaration(node);
                 return;
             case (ts.isExportDeclaration(node)):
                 transformExportDeclaration(node);
@@ -247,7 +290,7 @@ function deTypescript(fileNames, options, code) {
                 var decorators = ";" + className.constructionName + "= __decorate([";
                 decorators += commentOutParametersDecorators(node);
                 decorators = decorators.slice(0, -1) + "], " + className.constructionName + ");";
-                edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
+                edits.push({pos: node.parent.end, end: node.parent.end, order: 1, afterEnd: decorators});
             }
         }
     }
@@ -372,14 +415,12 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
-    function transformImportEqualsDeclaration(node) {
+    function getReferencesFromImportEquals(node) {
         var textToPaste;
         if (node.moduleReference) {
             let varName = node.name.getText();
             if (ts.isExternalModuleReference(node.moduleReference)) {
-                exportExists = true;
                 let moduleName = utilities.makeIdentifierFromModuleName(node.moduleReference.expression.text);
-
                 if (hasExportModifier(node)) {
                     textToPaste = getModuleName(node) + '.';
                 } else {
@@ -397,7 +438,6 @@ function deTypescript(fileNames, options, code) {
                     isImportEquals: true,
                     varName: varName
                 });
-                textToPaste += getTextFromSourceFile(node.name.pos + 1, node.end);
             } else {
                 if (hasExportModifier(node)) {
                     textToPaste = getModuleName(node) + '.';
@@ -412,6 +452,35 @@ function deTypescript(fileNames, options, code) {
                         used: isDeeplyInsideModule(node) || hasExportModifier(node),
                         varName: varName
                     });
+                }
+            }
+        }
+    }
+
+    function transformImportEqualsDeclaration(node) {
+        var textToPaste;
+        if (node.moduleReference) {
+            let varName = node.name.getText();
+            if (ts.isExternalModuleReference(node.moduleReference)) {
+                exportExists = true;
+                let moduleName = utilities.makeIdentifierFromModuleName(node.moduleReference.expression.text);
+
+                if (hasExportModifier(node)) {
+                    textToPaste = getModuleName(node) + '.';
+                } else {
+                    textToPaste = 'const ';
+                    if (!modulesIdentifiers[varName]) {
+                        modulesIdentifiers[varName] = moduleName;
+                    }
+                }
+                textToPaste += getTextFromSourceFile(node.name.pos + 1, node.end);
+            } else {
+                if (hasExportModifier(node)) {
+                    textToPaste = getModuleName(node) + '.';
+                } else {
+                    textToPaste = 'var '
+                }
+                if (!isNonEmittedIdentifier(node.moduleReference)) {
                     let reference = getReferencedIdentifier(node.moduleReference);
                     textToPaste += node.name.getText() + " = " + reference.text + getTextFromSourceFile(node.moduleReference.pos + node.moduleReference.getLeadingTriviaWidth() + reference.shift, node.end);
                 } else {
@@ -1224,14 +1293,6 @@ function deTypescript(fileNames, options, code) {
     function transformExportClass(node, className) {
         let moduleName = getModuleName(node);
         var constructionName = className.constructionName, dotPropertyName = className.dotPropertyName;
-        if (moduleName != "exports") {
-            refParents.push({
-                pos: node.pos + node.getLeadingTriviaWidth(),
-                aliasEnd: node.pos + node.getLeadingTriviaWidth(),
-                afterEnd: moduleName + '.',
-                isExportedClass: true
-            });
-        }
         let textToPaste = ";" + moduleName + "." + dotPropertyName + " = " + constructionName + ";";
         edits.push({pos: node.end, end: node.end, order: 2, afterEnd: textToPaste});
     }
