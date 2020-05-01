@@ -101,7 +101,11 @@ function deTypescript(fileNames, options, code) {
             var sourceFile = _a[_i];
             if (!sourceFile.isDeclarationFile && fileNameRegExp.test(sourceFile.fileName)) {
                 if (sourceFile.statements.length > 0) {
-                    startPos = sourceFile.statements[0].pos + sourceFile.statements[0].getLeadingTriviaWidth();
+                    if (ts.isExpressionStatement(sourceFile.statements[0]) && sourceFile.statements[0].expression.text == "use strict"){
+                        startPos = sourceFile.statements[0].end;
+                    } else {
+                        startPos = sourceFile.statements[0].pos + sourceFile.statements[0].getLeadingTriviaWidth();
+                    }
                 }
                 ts.forEachChild(sourceFile, getReferences);
                 ts.forEachChild(sourceFile, visit);
@@ -139,7 +143,7 @@ function deTypescript(fileNames, options, code) {
             case (ts.isTypeReferenceNode(node)):
                 return;
             case (node.body && ts.isModuleDeclaration(node) && !hasDeclareModifier(node)):
-                transformModule(node);
+                getReferencesFromModule(node);
                 break;
             case (ts.isVariableStatement(node) && hasExportModifier(node)):
                 transformExportVariable(node);
@@ -195,6 +199,9 @@ function deTypescript(fileNames, options, code) {
                 //TODO: maybe i will find better way to exclude overloads for functions and class methods
                 commentOutNode(node);
                 return;
+            case (node.body && ts.isModuleDeclaration(node) && !hasDeclareModifier(node)):
+                transformModule(node);
+                break;
             case (ts.isParameter(node) && node.name && node.name.getText() == "this"):
                 commentOutThisFromParameters(node);
                 return;
@@ -1030,8 +1037,7 @@ function deTypescript(fileNames, options, code) {
         return decorators;
     }
 
-    function transformModule(node) {
-        let moduleName = node.name.getText();
+    function getReferencesFromModule(node) {
         let nestedModule = node;
         while (nestedModule.body.name) {
             refParents.push({
@@ -1039,6 +1045,14 @@ function deTypescript(fileNames, options, code) {
                 aliasEnd: nestedModule.body.name.pos + nestedModule.body.name.getLeadingTriviaWidth(),
                 afterEnd: nestedModule.name.getText() + '.'
             });
+            nestedModule = nestedModule.body;
+        }
+    }
+
+    function transformModule(node) {
+        let moduleName = node.name.getText();
+        let nestedModule = node;
+        while (nestedModule.body.name) {
             nestedModule = nestedModule.body;
         }
         if (nestedModule.body.statements && nestedModule.body.statements.length > 0 && !areNonEmitStatements(nestedModule.body.statements)) {
