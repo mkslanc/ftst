@@ -956,7 +956,7 @@ function deTypescript(fileNames, options, code) {
             let coords = getTypeAssertionPosAndEnd(node);
             arr.push({pos: coords.pos, end: coords.end});
         }
-        if (node.questionToken && (ts.isParameter(node) || ts.isPropertyDeclaration(node) || ts.isVariableDeclaration(node))) {
+        if (node.questionToken && (ts.isParameter(node) || ts.isPropertyDeclaration(node) || ts.isVariableDeclaration(node) || ts.isShorthandPropertyAssignment(node))) {
             arr.push({
                 pos: node.questionToken.pos + node.questionToken.getLeadingTriviaWidth(),
                 end: node.questionToken.end
