@@ -691,11 +691,13 @@ function deTypescript(fileNames, options, code) {
             exportExists = true;
             if (!isNonEmittedIdentifier(node.expression)) {
                 edits.push({
-                    pos: node.pos + node.getLeadingTriviaWidth() + 6,
-                    end: node.pos + node.getLeadingTriviaWidth() + 7,
-                    afterEnd: "s."
+                    pos: node.pos + node.getLeadingTriviaWidth(),
+                    end: node.pos + node.getLeadingTriviaWidth() + 7, afterEnd: "exports."
                 });
-                edits.push({pos: node.expression.pos, end: node.expression.pos, afterEnd: " ="});
+                edits.push({
+                    pos: node.expression.pos,
+                    end: node.expression.pos, afterEnd: " ="
+                });
             } else {
                 commentOutNode(node);
             }
