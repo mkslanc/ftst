@@ -446,17 +446,23 @@ function deTypescript(fileNames, options, code) {
                     varName: varName
                 });
             } else {
+                let moduleName = utilities.makeIdentifierFromModuleName(node.moduleReference.getText());
                 if (hasExportModifier(node)) {
                     textToPaste = getModuleName(node) + '.';
                 } else {
-                    textToPaste = 'var '
+                    textToPaste = 'var ';
+                    if (!modulesIdentifiers[varName]) {
+                        modulesIdentifiers[varName] = moduleName;
+                    }
                 }
                 if (!isNonEmittedIdentifier(node.moduleReference)) {
                     refParents.push({
                         pos: node.pos + node.getLeadingTriviaWidth(),
                         aliasEnd: node.pos + node.getLeadingTriviaWidth(),
                         afterEnd: textToPaste,
-                        used: isDeeplyInsideModule(node) || hasExportModifier(node),
+                        moduleName: moduleName,
+                        isImportEquals: true,
+                        used: hasExportModifier(node),
                         varName: varName
                     });
                 }
@@ -1428,15 +1434,6 @@ function deTypescript(fileNames, options, code) {
 
     function isInsideModule(node) {
         return (node.parent && node.parent.parent && ts.isModuleDeclaration(node.parent.parent));
-    }
-
-    function isDeeplyInsideModule(node) {
-        let parent = node;
-        while (parent.parent) {
-            parent = parent.parent;
-            if (ts.isModuleDeclaration(parent))
-                return true;
-        }
     }
 
     function findClassParent(node) {
