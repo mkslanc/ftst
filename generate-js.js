@@ -867,7 +867,7 @@ function deTypescript(fileNames, options, code) {
     function setImportedIdentifiers(node, moduleName) {
         if (node.importClause && node.importClause.namedBindings && node.importClause.namedBindings.elements && node.importClause.namedBindings.elements.length > 0) {
             node.importClause.namedBindings.elements.forEach(function (el) {
-                let elName = (el.propertyName) ? el.propertyName.getText() : el.getText();
+                let elName = el.name.getText();
                 if (!modulesIdentifiers[elName]) {
                     modulesIdentifiers[elName] = moduleName + "_" + moduleReferencesNames[moduleName];
                 }
@@ -878,7 +878,7 @@ function deTypescript(fileNames, options, code) {
                         afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + "." + el.propertyName.getText(),
                         replace: true,
                         moduleName: moduleName + "_" + moduleReferencesNames[moduleName],
-                        varName: el.propertyName
+                        varName: elName
                     });
                 } else {
                     refParents.push({
@@ -913,21 +913,41 @@ function deTypescript(fileNames, options, code) {
             let elPropertyName = (el.propertyName) ? el.propertyName.getText() : el.name.getText();
             let elName = el.name.getText();
             let text, transform;
-            if (isImportedIdentifier(elPropertyName) && !moduleName) {
-                moduleNameFromImport = modulesIdentifiers[elPropertyName];
-                transform = findReferencedTransformByModule(moduleNameFromImport, elPropertyName);
-                if (transform) {
-                    transform.used = true;
+            //TODO: exclude type only exports
+            if (!nonExistedExportVariable(el.name, moduleName, elPropertyName)) {
+                if (isImportedIdentifier(elPropertyName) && !moduleName) {
+                    moduleNameFromImport = modulesIdentifiers[elPropertyName];
+                    transform = findReferencedTransformByModule(moduleNameFromImport, elPropertyName);
+                    if (transform) {
+                        transform.used = true;
+                    }
                 }
+                if (moduleNameFromImport && (!transform || transform && !transform.isImportEquals)) {
+                    let identifier;
+                    if (transform && transform.replace) {
+                        identifier = transform.afterEnd;
+                    } else {
+                        identifier = (/_[\d]+$/.test(moduleNameFromImport)) ? moduleNameFromImport + "." + elPropertyName : moduleNameFromImport;
+                    }
+                    text = "exports." + elName + " = " + identifier + ";";
+                } else {
+                    text = "exports." + elName + " = " + elPropertyName + ";";
+                }
+                edits.push({pos: node.end, end: node.end, afterEnd: text});
             }
-            if (moduleNameFromImport && (!transform || transform && !transform.isImportEquals)) {
-                let identifier = (/_[\d]+$/.test(moduleNameFromImport)) ? moduleNameFromImport + "." + elPropertyName : moduleNameFromImport;
-                text = "exports." + elName + " = " + identifier + ";";
-            } else {
-                text = "exports." + elName + " = " + elPropertyName + ";";
-            }
-            edits.push({pos: node.end, end: node.end, afterEnd: text});
         });
+    }
+
+    function nonExistedExportVariable(node, moduleName, name) {
+        let symbol = checker.getSymbolAtLocation(node);
+        let aliasCheck = true;
+        if (symbol && symbol.flags == ts.SymbolFlags.Alias) {
+            let alias = checker.getAliasedSymbol(symbol);
+            if (alias && alias.declarations && areNonEmitStatements(alias.declarations)) {
+                aliasCheck = false;
+            }
+        }
+        return !moduleName && (!sourceFile.locals || !sourceFile.locals.get(name) || !aliasCheck);
     }
 
     function isImportedIdentifier(name) {
