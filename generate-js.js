@@ -519,12 +519,20 @@ function deTypescript(fileNames, options, code) {
                 }
             case ts.SyntaxKind.Identifier:
                 let symbol = checker.getSymbolAtLocation(identifier);
-                if (symbol && symbol.declarations && areNonEmitStatements(symbol.declarations)) {
-                    return true;
-                }
-                break;
+                if (symbol && symbol.declarations)
+                    return checkNonEmitDeclarations(symbol);
         }
         return false;
+    }
+
+    function checkNonEmitDeclarations(symbol) {
+        return symbol.declarations.every(function (declaration) {
+            if (ts.isModuleDeclaration(declaration) && declaration.body && declaration.body.statements) {
+                return areNonEmitStatements(declaration.body.statements);
+            } else {
+                return isNonEmitStatement(declaration);
+            }
+        });
     }
 
     function getReferencedIdentifier(node) {
@@ -1143,6 +1151,10 @@ function deTypescript(fileNames, options, code) {
         })
     }
 
+    function isNonEmitStatement(statement) {
+        return (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement));
+    }
+
     function transformEnum(node) {
         let enumName = node.name.getText();
         let textToPaste, initializer, computed = false;
@@ -1223,7 +1235,7 @@ function deTypescript(fileNames, options, code) {
         } else {
             textToPaste = isDuplicatedDeclaration(node) ?
                 "(function (" + enumName + ")" :
-                (isInsideModule(node) || isInsideFunction(node)) ?
+                (!isGlobalScoped(node)) ?
                     "let " + enumName + ";(function (" + enumName + ")" :
                     "var " + enumName + ";(function (" + enumName + ")";
             edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: textToPaste});
@@ -1258,6 +1270,15 @@ function deTypescript(fileNames, options, code) {
                 }
             });
         }
+    }
+
+    function isGlobalScoped(node) {
+        do {
+            node = node.parent;
+            if (ts.isModuleDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node))
+                return false;
+        } while (!ts.isSourceFile(node));
+        return true;
     }
 
     function getThisParameter(node) {
