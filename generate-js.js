@@ -101,7 +101,7 @@ function deTypescript(fileNames, options, code) {
             var sourceFile = _a[_i];
             if (!sourceFile.isDeclarationFile && fileNameRegExp.test(sourceFile.fileName)) {
                 if (sourceFile.statements.length > 0) {
-                    if (ts.isExpressionStatement(sourceFile.statements[0]) && sourceFile.statements[0].expression.text == "use strict"){
+                    if (ts.isExpressionStatement(sourceFile.statements[0]) && sourceFile.statements[0].expression.text == "use strict") {
                         startPos = sourceFile.statements[0].end;
                     } else {
                         startPos = sourceFile.statements[0].pos + sourceFile.statements[0].getLeadingTriviaWidth();
@@ -192,7 +192,7 @@ function deTypescript(fileNames, options, code) {
             case ((ts.isGetAccessor(node) || ts.isSetAccessor(node)) && !node.body):
             case (node.kind && node.kind == ts.SyntaxKind.Constructor && !node.body):
             case (ts.isHeritageClause(node) && node.token && node.token == ts.SyntaxKind.ImplementsKeyword):
-                //I don't know why typescript transforms declare identifiers, but here we are
+            //I don't know why typescript transforms declare identifiers, but here we are
             case (hasDeclareModifier(node) && !(ts.isVariableStatement(node) && hasExportModifier(node))):
             case (ts.isIndexSignatureDeclaration(node)):
             case (node.kind === ts.SyntaxKind.ExclamationToken):
@@ -430,30 +430,30 @@ function deTypescript(fileNames, options, code) {
                 let moduleName = utilities.makeIdentifierFromModuleName(node.moduleReference.expression.text);
                 if (hasExportModifier(node)) {
                     textToPaste = getModuleName(node) + '.';
-                } else {
-                    textToPaste = 'const ';
                     if (!modulesIdentifiers[varName]) {
                         modulesIdentifiers[varName] = moduleName;
                     }
+                } else {
+                    textToPaste = 'const ';
                 }
                 refParents.push({
                     pos: node.pos + node.getLeadingTriviaWidth(),
                     aliasEnd: node.pos + node.getLeadingTriviaWidth(),
                     afterEnd: textToPaste,
                     used: (textToPaste === "exports."),
-                    moduleName: moduleName,
+                    moduleName: "global",
                     isImportEquals: true,
                     varName: varName
                 });
             } else {
-                let moduleName = utilities.makeIdentifierFromModuleName(node.moduleReference.getText());
+                let moduleName = "global";
                 if (hasExportModifier(node)) {
                     textToPaste = getModuleName(node) + '.';
-                } else {
-                    textToPaste = 'var ';
                     if (!modulesIdentifiers[varName]) {
                         modulesIdentifiers[varName] = moduleName;
                     }
+                } else {
+                    textToPaste = 'var ';
                 }
                 if (!isNonEmittedIdentifier(node.moduleReference)) {
                     refParents.push({
@@ -473,18 +473,12 @@ function deTypescript(fileNames, options, code) {
     function transformImportEqualsDeclaration(node) {
         var textToPaste;
         if (node.moduleReference) {
-            let varName = node.name.getText();
             if (ts.isExternalModuleReference(node.moduleReference)) {
                 exportExists = true;
-                let moduleName = utilities.makeIdentifierFromModuleName(node.moduleReference.expression.text);
-
                 if (hasExportModifier(node)) {
                     textToPaste = getModuleName(node) + '.';
                 } else {
                     textToPaste = 'const ';
-                    if (!modulesIdentifiers[varName]) {
-                        modulesIdentifiers[varName] = moduleName;
-                    }
                 }
                 textToPaste += getTextFromSourceFile(node.name.pos + 1, node.end);
             } else {
@@ -519,8 +513,9 @@ function deTypescript(fileNames, options, code) {
                 }
             case ts.SyntaxKind.Identifier:
                 let symbol = checker.getSymbolAtLocation(identifier);
-                if (symbol && symbol.declarations)
+                if (symbol && symbol.declarations) {
                     return checkNonEmitDeclarations(symbol);
+                }
         }
         return false;
     }
@@ -902,17 +897,24 @@ function deTypescript(fileNames, options, code) {
         if (node.importClause && node.importClause.name) {
             let elName = node.importClause.name.getText();
             if (!modulesIdentifiers[elName]) {
-                modulesIdentifiers[elName] = moduleName + "_" + moduleReferencesNames[moduleName] + ".default";
+                modulesIdentifiers[elName] = moduleName + "_" + moduleReferencesNames[moduleName];// + ".default"
             }
             refParents.push({
                 pos: node.importClause.name.pos + node.importClause.name.getLeadingTriviaWidth(),
                 aliasEnd: node.importClause.name.pos,
                 afterEnd: moduleName + "_" + moduleReferencesNames[moduleName] + ".default",
                 replace: true,
-                moduleName: moduleName + "_" + moduleReferencesNames[moduleName]
+                moduleName: moduleName + "_" + moduleReferencesNames[moduleName],
+                varName: elName
             });
         }
 
+    }
+
+    function getAliasSymbol(symbol) {
+        if (symbol && symbol.flags == ts.SymbolFlags.Alias) {
+            return checker.getAliasedSymbol(symbol);
+        }
     }
 
     function setExportedIdentifiers(node, moduleName) {
@@ -922,40 +924,46 @@ function deTypescript(fileNames, options, code) {
             let elName = el.name.getText();
             let text, transform;
             //TODO: exclude type only exports
-            if (!nonExistedExportVariable(el.name, moduleName, elPropertyName)) {
-                if (isImportedIdentifier(elPropertyName) && !moduleName) {
-                    moduleNameFromImport = modulesIdentifiers[elPropertyName];
+            let symbol = checker.getSymbolAtLocation(el.name);
+            var alias = getAliasSymbol(symbol);
+            if (alias && alias.declarations && checkNonEmitDeclarations(alias)) {
+                return;
+            }
+            if (isImportedIdentifier(elPropertyName) && !moduleName) {
+                moduleNameFromImport = modulesIdentifiers[elPropertyName];
+                if (alias && alias.escapedName !== "unknown" && moduleNameFromImport !== "global") {
+                    transform = findReferencedDeclaration(alias);
+                }
+                if (!transform) {
                     transform = findReferencedTransformByModule(moduleNameFromImport, elPropertyName);
                     if (transform) {
                         transform.used = true;
                     }
                 }
-                if (moduleNameFromImport && (!transform || transform && !transform.isImportEquals)) {
-                    let identifier;
-                    if (transform && transform.replace) {
+            }
+            if (moduleNameFromImport) {
+                let identifier;
+                if (transform) {
+                    if (transform.replace) {
                         identifier = transform.afterEnd;
                     } else {
-                        identifier = (/_[\d]+$/.test(moduleNameFromImport)) ? moduleNameFromImport + "." + elPropertyName : moduleNameFromImport;
+                        identifier = transform.afterEnd + elPropertyName;
                     }
-                    text = "exports." + elName + " = " + identifier + ";";
                 } else {
-                    text = "exports." + elName + " = " + elPropertyName + ";";
+                    identifier = (/_[\d]+$/.test(moduleNameFromImport)) ? moduleNameFromImport + "." + elPropertyName : moduleNameFromImport;
                 }
-                edits.push({pos: node.end, end: node.end, afterEnd: text});
+                text = "exports." + elName + " = " + identifier + ";";
+            } else {
+                text = "exports." + elName + " = " + elPropertyName + ";";
+            }
+            edits.push({pos: node.end, end: node.end, afterEnd: text});
+            if (!transform) {//search for used global references
+                transform = findReferencedTransformByModule("global", elPropertyName);
+                if (transform) {
+                    transform.used = true;
+                }
             }
         });
-    }
-
-    function nonExistedExportVariable(node, moduleName, name) {
-        let symbol = checker.getSymbolAtLocation(node);
-        let aliasCheck = true;
-        if (symbol && symbol.flags == ts.SymbolFlags.Alias) {
-            let alias = checker.getAliasedSymbol(symbol);
-            if (alias && alias.declarations && areNonEmitStatements(alias.declarations)) {
-                aliasCheck = false;
-            }
-        }
-        return !moduleName && (!sourceFile.locals || !sourceFile.locals.get(name) || !aliasCheck);
     }
 
     function isImportedIdentifier(name) {
@@ -1389,13 +1397,18 @@ function deTypescript(fileNames, options, code) {
         if (node.declarationList && node.declarationList.declarations) {
             var moduleName = getModuleName(node);
             var needDeclare = false;
-
             node.declarationList.declarations.forEach(function (decl) {
                 textToPaste = moduleName + ".";
-                    refParents.push({
-                        pos: decl.name.pos + decl.name.getLeadingTriviaWidth(),
-                        afterEnd: textToPaste,
-                    });
+                refParents.push({
+                    pos: decl.name.pos + decl.name.getLeadingTriviaWidth(),
+                    afterEnd: textToPaste,
+                });
+                if (!ts.isArrayBindingPattern(decl.name) && !ts.isObjectBindingPattern(decl.name)) {
+                    let elName = decl.name.getText();
+                    if (moduleName === "exports" && !modulesIdentifiers[elName]) {
+                        modulesIdentifiers[elName] = moduleName;
+                    }
+                }
                 if (decl.initializer) {
                     //TODO: maybe i should use way typescript developers used
                     if (ts.isArrayBindingPattern(decl.name) || ts.isObjectBindingPattern(decl.name)) {
@@ -1659,6 +1672,15 @@ exports.ModuleKind = ts.ModuleKind;
 
 if (process.argv.length > 2) {
     generateJavaScriptFile(process.argv.slice(2), {
-        target: ts.ScriptTarget.ESNext, module: "None", allowJs: false, lib: [], types: [], noEmit: true, noLib: true, noResolve: true, isolatedModules: true, suppressOutputPathCheck: true
+        target: ts.ScriptTarget.ESNext,
+        module: "None",
+        allowJs: false,
+        lib: [],
+        types: [],
+        noEmit: true,
+        noLib: true,
+        noResolve: true,
+        isolatedModules: true,
+        suppressOutputPathCheck: true
     });
 }
