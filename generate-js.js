@@ -336,7 +336,7 @@ function deTypescript(fileNames, options, code) {
 
     function transformExportDeclaration(node) {
         exportExists = true;
-        if (!node.isTypeOnly) {
+        if (!node.isTypeOnly && !isInsideModule(node)) {
             if (node.exportClause && (node.exportClause.elements && node.exportClause.elements.length > 0 || node.exportClause.name)) {
                 if (node.exportClause.elements && node.exportClause.elements.length > 0) {
                     var moduleReferenceName = getModuleSpecifierName(node);
@@ -528,8 +528,12 @@ function deTypescript(fileNames, options, code) {
 
     function isNonEmited(node) {
         if (ts.isModuleDeclaration(node)) {
-            if (node.body && node.body.statements) {
-                return node.body.statements.every(function (statement) {
+            let nestedModule = node;
+            while (nestedModule.body.name) {
+                nestedModule = nestedModule.body;
+            }
+            if (nestedModule.body && nestedModule.body.statements) {
+                return nestedModule.body.statements.every(function (statement) {
                     return isNonEmited(statement);
                 });
             } else {
