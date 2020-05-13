@@ -358,7 +358,7 @@ function deTypescript(fileNames, options, code) {
                     commentOutNode(node, textToPaste);
                 }
             } else {
-                if (node.moduleSpecifier && !node.exportClause) {
+                if (node.moduleSpecifier && !node.exportClause && !isInsideModule(node)) {
                     exportWrapperExists = true;
                     textToPaste = '__export(require(' + node.moduleSpecifier.getText() + "));";
                 } else {
