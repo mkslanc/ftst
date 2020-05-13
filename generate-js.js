@@ -522,13 +522,24 @@ function deTypescript(fileNames, options, code) {
 
     function checkNonEmitDeclarations(symbol) {
         return symbol.declarations.every(function (declaration) {
-            if (ts.isModuleDeclaration(declaration) && declaration.body && declaration.body.statements) {
-                return areNonEmitStatements(declaration.body.statements);
-            } else {
-                return isNonEmitStatement(declaration);
-            }
+            return isNonEmited(declaration);
         });
     }
+
+    function isNonEmited(node) {
+        if (ts.isModuleDeclaration(node)) {
+            if (node.body && node.body.statements) {
+                return node.body.statements.every(function (statement) {
+                    return isNonEmited(statement);
+                });
+            } else {
+                return true;
+            }
+        } else {
+            return isNonEmitStatement(node);
+        }
+    }
+
 
     function getReferencedIdentifier(node) {
         let identifier = node;
@@ -677,7 +688,7 @@ function deTypescript(fileNames, options, code) {
         if (node.isExportEquals && node.isExportEquals == true) {
             if (ts.isSourceFile(node.parent)) {
                 let symbol = checker.getSymbolAtLocation(node.expression);
-                if (symbol && areNonEmitStatements(symbol.declarations)) {
+                if (symbol && symbol.declarations && checkNonEmitDeclarations(symbol)) {
                     commentOutNode(node);
                 } else {
                     if (!moduleExportExists) {
@@ -1099,7 +1110,7 @@ function deTypescript(fileNames, options, code) {
         while (nestedModule.body.name) {
             nestedModule = nestedModule.body;
         }
-        if (nestedModule.body.statements && nestedModule.body.statements.length > 0 && !areNonEmitStatements(nestedModule.body.statements)) {
+        if (!isNonEmited(nestedModule)) {
             if (hasExportModifier(node)) {
                 let parentModuleName = getModuleName(node);
                 textToPaste = isDuplicatedDeclaration(node) ?
