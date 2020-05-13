@@ -1175,7 +1175,7 @@ function deTypescript(fileNames, options, code) {
     }
 
     function isNonEmitStatement(statement) {
-        return (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement));
+        return (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement) || hasDeclareModifier(statement));
     }
 
     function transformEnum(node) {
