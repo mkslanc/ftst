@@ -597,20 +597,22 @@ function deTypescript(fileNames, options, code) {
         var constructionName = getMethodName(node.name);
         if (node.decorators && node.decorators.length) {
             edits.push({pos: node.decorators.pos, end: node.decorators.end});
-            var decorators = ";__decorate([";
-            let decoratorsLength = node.decorators.length;
-            for (var i = 0; i < decoratorsLength; i++) {
-                decorators += serveDecorators(node.decorators[i].expression) + ",";
-            }
-            if (ts.isPropertyDeclaration(node)) {
-                decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", void 0);";
-            } else {
-                if (hasParametersDecorators(node)) {
-                    decorators += commentOutParametersDecorators(node);
+            if (!ts.isPrivateIdentifier(node.name)) {
+                var decorators = ";__decorate([";
+                let decoratorsLength = node.decorators.length;
+                for (var i = 0; i < decoratorsLength; i++) {
+                    decorators += serveDecorators(node.decorators[i].expression) + ",";
                 }
-                decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
+                if (ts.isPropertyDeclaration(node)) {
+                    decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", void 0);";
+                } else {
+                    if (hasParametersDecorators(node)) {
+                        decorators += commentOutParametersDecorators(node);
+                    }
+                    decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
+                }
+                edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
             }
-            edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
         } else {
             if (hasParametersDecorators(node)) {
                 var decorators = ";__decorate([";
