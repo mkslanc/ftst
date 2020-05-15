@@ -400,7 +400,8 @@ function deTypescript(fileNames, options, code) {
                         aliasEnd: node.importClause.namedBindings.name.pos,
                         afterEnd: "",
                         moduleName: moduleReferenceNameBinding,
-                        varName: moduleReferenceNameBinding
+                        varName: moduleReferenceNameBinding,
+                        isTypeOnly: (node.importClause.isTypeOnly)
                     });
                     if (!modulesIdentifiers[moduleReferenceNameBinding]) {
                         modulesIdentifiers[moduleReferenceNameBinding] = moduleReferenceNameBinding;
