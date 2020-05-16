@@ -697,7 +697,7 @@ function deTypescript(fileNames, options, code) {
         if (node.isExportEquals && node.isExportEquals == true) {
             if (ts.isSourceFile(node.parent)) {
                 let symbol = checker.getSymbolAtLocation(node.expression);
-                if (symbol && symbol.declarations && checkNonEmitDeclarations(symbol)) {
+                if (symbol && symbol.declarations && symbol.declarations.length > 0 && checkNonEmitDeclarations(symbol)) {
                     commentOutNode(node);
                 } else {
                     if (!moduleExportExists) {
@@ -1144,7 +1144,9 @@ function deTypescript(fileNames, options, code) {
             } else {
                 if (isDottedModule(node)) {
                     let parentModuleName = node.parent.name.getText();
-                    textToPaste = "{var " + moduleName + ";(function (" + moduleName + ")";
+                    textToPaste = isInsideModuleBlock(node) ?
+                        "{let " + moduleName + ";(function (" + moduleName + ")" :
+                        "{var " + moduleName + ";(function (" + moduleName + ")";
                     edits.push({
                         pos: node.pos + node.getLeadingTriviaWidth(),
                         end: node.body.pos,
@@ -1178,6 +1180,16 @@ function deTypescript(fileNames, options, code) {
         } else {
             commentOutNode(node);
         }
+    }
+
+    function isInsideModuleBlock(node) {
+        let nested = node.parent;
+        while (!ts.isSourceFile(nested)) {
+            if (ts.isModuleBlock(nested))
+                return true;
+            nested = nested.parent;
+        }
+        return false;
     }
 
     function areNonEmitStatements(statements) {
