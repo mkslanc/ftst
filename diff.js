@@ -3,9 +3,17 @@ var jsdiff = require('diff');
 var fs = require("fs");
 const Path = require('path');
 var hrstart = process.hrtime();
+var blackList = require("./blacklist").blackList;
 function generateJavaScriptFile(path, options) {
     deleteFolderRecursive(process.argv[3]);
+    updateBlackListPath();
     add(path[0]);
+
+    function updateBlackListPath() {
+        blackList.forEach(function (el,index, arr) {
+            arr[index] = process.argv[2] + "/" + el;
+        });
+    }
 
     function add(path) {
         try {
@@ -13,7 +21,7 @@ function generateJavaScriptFile(path, options) {
         } catch (e) {
             return;
         }
-        if (stat.isFile() && /Js\.js$/.test(path)) {
+        if (stat.isFile() && /Js\.js$/.test(path) && blackList.indexOf(path) === -1) {
             //console.log(path + "\r\n");
             var first = fs.readFileSync(path, "utf8");
 
@@ -27,7 +35,7 @@ function generateJavaScriptFile(path, options) {
                 first = first.replace(/[/][/].*$/gm, "");
                 var moduleMatch = first.match(/module[.]exports\s*=.*(?=$|\s*[/][/])/m);
                 if (moduleMatch) {
-                    var moduleFoundRegExp = new RegExp(moduleMatch[0].replace(/([()\[\]])/g,"\\$1"));
+                    var moduleFoundRegExp = new RegExp(moduleMatch[0].replace(/([()\[\]|])/g,"\\$1"));
                     if (moduleFoundRegExp.test(second)) {
                         first = first.replace(moduleFoundRegExp, "");
                         second = second.replace(moduleFoundRegExp, "");
@@ -55,10 +63,10 @@ function generateJavaScriptFile(path, options) {
                 //second = second.replace(/\/\/\s@Filename: .*?\.json.*?(?=\/\/\s@|$)/gs, "");
                 second = second.replace(/[/][/].*$/gm, "");
                 //TODO: experimental!
-                first = first.replace(/constructor\((?:[\w\s,]*)?\)\s*{/gm, "");
-                second = second.replace(/constructor\((?:[\w\s,]*)?\)\s*{/gm, "");
-                first = first.replace(/(?:\(\s*)?this(?:\s*\))?\./gm, "");
-                second = second.replace(/(?:\(\s*)?this(?:\s*\))?\./gm, "");
+                first = first.replace(/constructor\s*\((?:[\w\s,]*)?\)\s*{/gm, "");
+                second = second.replace(/constructor\s*\((?:[\w\s,]*)?\)\s*{/gm, "");
+                first = first.replace(/(?:\(\s*)?this(?:\s*\))?[.\[]/gm, "");
+                second = second.replace(/(?:\(\s*)?this(?:\s*\))?[.\[]/gm, "");
                 first = first.replace(/super\(.*?\)/gs, "");
                 second = second.replace(/super\(.*?\)/gs, "");
                 // ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -71,7 +79,7 @@ function generateJavaScriptFile(path, options) {
                 if (diff.length > 1 || (diff.length == 1 && (diff[0].added || diff[0].removed))) {
                     for (var i = 0; i < diff.length; i++) {
                         if ((diff[i].removed || diff[i].added)) {
-                            if (/^[*\s;'"(),/~.-]+$/s.test(diff[i].value)) {
+                            if (/^[*\s;'"(),/~.\]\[-]+$/s.test(diff[i].value)) {
                                 diff.splice(i, 1);
                                 i--;
                             } else {

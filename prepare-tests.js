@@ -10,7 +10,7 @@ function add(path) {
         var fileArr = [];
         fileArr.push(path);
         var typescriptFile = fs.readFileSync(path, "utf8");
-        var transpileCode = typescriptFile.split(/\/\/ @filename: ([^\s]+).*/gmi);
+        var transpileCode = typescriptFile.split(/\/\/\s*@filename: ([^\s]+).*/gmi);
         if (transpileCode.length > 1) {
             transpileCode.shift();
             let tsFileDir = 'typescript_tests/' + path + '/';
@@ -18,12 +18,12 @@ function add(path) {
                 fs.mkdirSync(tsFileDir, {recursive: true});
             }
             for (var i = 1; i < transpileCode.length; i = i + 2) {
-                let dirName = transpileCode[i - 1].replace(":","_").split('/').slice(0, -1).join('/');
+                let dirName = transpileCode[i - 1].replace(/[:\\]/g,"_").split("/").slice(0, -1).join('/');
                 if (!fs.existsSync(tsFileDir + dirName)) {
 
                     fs.mkdirSync(tsFileDir + dirName, {recursive: true});
                 }
-                fs.writeFileSync(tsFileDir + transpileCode[i - 1].replace(":","_"), transpileCode[i]);
+                fs.writeFileSync(tsFileDir + transpileCode[i - 1].replace(/[:\\]/g,"_"), transpileCode[i]);
             }
         } else {
             let dirName = 'typescript_tests/' + path.split('/').slice(0, -1).join('/');
