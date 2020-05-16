@@ -964,6 +964,14 @@ function deTypescript(fileNames, options, code) {
                         transform.used = true;
                     }
                 }
+            } else {
+                transform = findReferencedTransformByModule("global", elPropertyName);
+                if (transform) {
+                    transform.used = true;
+                }
+                if (!transform && (!alias || alias && alias.escapedName == "unknown") && !node.moduleSpecifier) {
+                    return;
+                }
             }
             if (moduleNameFromImport) {
                 let identifier;
@@ -983,12 +991,6 @@ function deTypescript(fileNames, options, code) {
                 text = "exports." + elName + " = " + elPropertyName + ";";
             }
             edits.push({pos: node.end, end: node.end, afterEnd: text});
-            if (!transform) {//search for used global references
-                transform = findReferencedTransformByModule("global", elPropertyName);
-                if (transform) {
-                    transform.used = true;
-                }
-            }
         });
     }
 
@@ -1596,7 +1598,7 @@ function deTypescript(fileNames, options, code) {
         edits.push({
             pos: startPos,
             end: startPos,
-            afterEnd: "Object.defineProperty(exports, \"__esModule\", { value: true });",
+            afterEnd: ";Object.defineProperty(exports, \"__esModule\", { value: true });",
             order: 0
         });
     }
@@ -1604,7 +1606,7 @@ function deTypescript(fileNames, options, code) {
         edits.push({
             pos: startPos,
             end: startPos,
-            afterEnd: "function __export(m) { for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];}",
+            afterEnd: ";function __export(m) { for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];}",
             order: 1
         });
     }
