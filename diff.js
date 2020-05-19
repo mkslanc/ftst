@@ -26,13 +26,22 @@ function generateJavaScriptFile(path, options) {
             var first = fs.readFileSync(path, "utf8");
 
             var newFileName = path.replace(/Js\.js/, "Ts.js");
+            if (!fs.existsSync(newFileName))
+                return;
             var second = fs.readFileSync(newFileName, "utf8");
             //TODO: delete it! for our tests we just ignoring files with "static" word
             if (first && second && !/static\s/.test(first)) {
                 var span = '';
+
+                first = first.replace("Object.defineProperty(exports, \"__esModule\", { value: true });", "");
+                second = second.replace("Object.defineProperty(exports, \"__esModule\", { value: true });", "");
+
                 first = first.replace(/(?<=^|[^/]|[*][/])[/][*][\s\S]*?[*][/]/gm, "");
-                //first = first.replace(/\/\/\s@Filename: .*?\.json.*?(?=\/\/\s@|$)/gs, "");
                 first = first.replace(/[/][/].*$/gm, "");
+
+                first = first.replace(/exports[.][\w_]+\s*=\s*.*void 0;/, "");
+                second = second.replace(/exports[.][\w_]+\s*=\s*.*void 0;/, "");
+
                 var moduleMatch = first.match(/module[.]exports\s*=.*(?=$|\s*[/][/])/m);
                 if (moduleMatch) {
                     var moduleFoundRegExp = new RegExp(moduleMatch[0].replace(/([()\[\]|])/g,"\\$1"));

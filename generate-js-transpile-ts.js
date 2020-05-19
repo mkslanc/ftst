@@ -11,7 +11,7 @@ function generateJavaScriptFile(path, options) {
         } catch (e) {
             return;
         }
-        if (stat.isFile() && /([^d]|[^.]d)\.ts$/.test(path)) {
+        if (stat.isFile() && /([^d]|[^.]d)\.ts$/.test(path) && !/(binderBinaryExpressionStress|noCrashOnMixin)/.test(path)) {
             console.log(path + "\r\n");
             var fileArr = [];
             fileArr.push(path);
@@ -39,7 +39,7 @@ function compileTypescript(code, fileName) {
             suppressExcessPropertyErrors: true,
             module: ts.ModuleKind.CommonJS,
             removeComments: false,
-            target: ts.ModuleKind.ESNext,
+            target: ts.ScriptTarget.ESNext,
             noEmitHelpers: true,
             preserveConstEnums: true,
             noImplicitUseStrict: true

@@ -63,7 +63,7 @@ function generateJavaScriptFile(path, options) {
         } catch (e) {
             return;
         }
-        if (stat.isFile() && /([^d]|[^.]d)\.ts$/.test(path)) {
+        if (stat.isFile() && /([^d]|[^.]d)\.ts$/.test(path) && !/binderBinaryExpressionStress/.test(path)) {
             var fileArr = [];
             fileArr.push(path);
             var filename = path.replace(/.ts$/, "Js.js");
@@ -94,6 +94,7 @@ function deTypescript(fileNames, options, code) {
     var textToPaste;
     var fileNameRegExp = new RegExp(fileNames[0]);
     var startPos = 0;
+    var allExports = [];
     let syntacticErrors = program.getSyntacticDiagnostics();
     if (syntacticErrors.length === 0) {
         let sources = program.getSourceFiles();
@@ -354,13 +355,14 @@ function deTypescript(fileNames, options, code) {
                     }
                 }
                 if (node.exportClause.name) {
-                    textToPaste = "exports." + node.exportClause.name.getText() + " = require(" + node.moduleSpecifier.getText() + ");";
+                    let exportName = "exports." + node.exportClause.name.getText();
+                    textToPaste = exportName + " = require(" + node.moduleSpecifier.getText() + ");";
                     commentOutNode(node, textToPaste);
                 }
             } else {
                 if (node.moduleSpecifier && !node.exportClause && !isInsideModule(node)) {
                     exportWrapperExists = true;
-                    textToPaste = '__export(require(' + node.moduleSpecifier.getText() + "));";
+                    textToPaste = '__exportStar(require(' + node.moduleSpecifier.getText() + "), exports);";
                 } else {
                     textToPaste = '';
                 }
@@ -401,7 +403,8 @@ function deTypescript(fileNames, options, code) {
                         afterEnd: "",
                         moduleName: moduleReferenceNameBinding,
                         varName: moduleReferenceNameBinding,
-                        isTypeOnly: (node.importClause.isTypeOnly)
+                        isTypeOnly: (node.importClause.isTypeOnly),
+                        isStarImport: true
                     });
                     if (!modulesIdentifiers[moduleReferenceNameBinding]) {
                         modulesIdentifiers[moduleReferenceNameBinding] = moduleReferenceNameBinding;
@@ -485,12 +488,16 @@ function deTypescript(fileNames, options, code) {
                 }
                 textToPaste += getTextFromSourceFile(node.name.pos + 1, node.end);
             } else {
-                if (hasExportModifier(node)) {
-                    textToPaste = getModuleName(node) + '.';
-                } else {
-                    textToPaste = 'var '
-                }
                 if (!isNonEmittedIdentifier(node.moduleReference)) {
+                    if (hasExportModifier(node)) {
+                        let moduleName = getModuleName(node);
+                        textToPaste = moduleName + '.';
+                        if (node.name) {
+                            hoistExports(moduleName, textToPaste + node.name.getText());
+                        }
+                    } else {
+                        textToPaste = 'var '
+                    }
                     let reference = getReferencedIdentifier(node.moduleReference);
                     textToPaste += node.name.getText() + " = " + reference.text + getTextFromSourceFile(node.moduleReference.pos + node.moduleReference.getLeadingTriviaWidth() + reference.shift, node.end);
                 } else {
@@ -978,16 +985,25 @@ function deTypescript(fileNames, options, code) {
                 if (transform) {
                     if (transform.isTypeOnly)
                         return;
+                    hoistExports("exports", "exports." + elName, true);
                     if (transform.replace) {
                         identifier = transform.afterEnd;
+
                     } else {
                         identifier = transform.afterEnd + elPropertyName;
+
+                    }
+                    if (transform.isStarImport || /[.]default/.test(identifier)) {
+                        text = "exports." + elName + " = " + identifier + ";";
+                    } else {
+                        text = "Object.defineProperty(exports, \"" + elName + "\", { enumerable: true, get: function () { return " + identifier + "; } });";
                     }
                 } else {
                     identifier = (/_[\d]+$/.test(moduleNameFromImport)) ? moduleNameFromImport + "." + elPropertyName : moduleNameFromImport;
+                    text = "Object.defineProperty(exports, \"" + elName + "\", { enumerable: true, get: function () { return " + identifier + "; } });"
                 }
-                text = "exports." + elName + " = " + identifier + ";";
             } else {
+                hoistExports("exports", "exports." + elName);
                 text = "exports." + elName + " = " + elPropertyName + ";";
             }
             edits.push({pos: node.end, end: node.end, afterEnd: text});
@@ -1121,6 +1137,13 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
+    function hoistExports(moduleName, exportName, isDefaultAlias = false) {
+        if (!isDefaultAlias && exportName === "exports.default")
+            return;
+        if (moduleName === "exports" && allExports.indexOf(exportName) === -1)
+            allExports.unshift(exportName);
+    }
+
     function transformModule(node) {
         let moduleName = node.name.getText();
         let nestedModule = node;
@@ -1130,6 +1153,8 @@ function deTypescript(fileNames, options, code) {
         if (!isNonEmited(nestedModule)) {
             if (hasExportModifier(node)) {
                 let parentModuleName = getModuleName(node);
+                let referencedName = parentModuleName + "." + moduleName;
+                hoistExports(parentModuleName, referencedName);
                 textToPaste = isDuplicatedDeclaration(node) ?
                     "(function (" + moduleName + ")" :
                     (parentModuleName != "exports") ?
@@ -1140,7 +1165,7 @@ function deTypescript(fileNames, options, code) {
                     end: node.body.pos,
                     afterEnd: textToPaste
                 });
-                textToPaste = ")(" + moduleName + " = " + parentModuleName + "." + moduleName + " || (" + parentModuleName + "." + moduleName + " = {}));";
+                textToPaste = ")(" + moduleName + " = " + referencedName + " || (" + referencedName + " = {}));";
             } else {
                 if (isDottedModule(node)) {
                     let parentModuleName = node.parent.name.getText();
@@ -1273,13 +1298,15 @@ function deTypescript(fileNames, options, code) {
         }
         if (hasExportModifier(node)) {
             let moduleName = getModuleName(node);
+            let referencedName = moduleName + "." + enumName;
+            hoistExports(moduleName, referencedName);
             textToPaste = isDuplicatedDeclaration(node) ?
                 "(function (" + enumName + ")" :
                 (moduleName != "exports") ?
                     "let " + enumName + ";(function (" + enumName + ")" :
                     "var " + enumName + ";(function (" + enumName + ")";
             edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: textToPaste});
-            textToPaste = ")(" + enumName + " = " + moduleName + "." + enumName + " || (" + moduleName + "." + enumName + " = {}));";
+            textToPaste = ")(" + enumName + " = " + referencedName + " || (" + referencedName + " = {}));";
         } else {
             textToPaste = isDuplicatedDeclaration(node) ?
                 "(function (" + enumName + ")" :
@@ -1397,14 +1424,18 @@ function deTypescript(fileNames, options, code) {
                 afterEnd: moduleName + '.',
                 isExportedFunction: true
             });
-        let textToPaste = moduleName + "." + dotPropertyName + " = " + constructionName + ";";
+        let referencedName = moduleName + "." + dotPropertyName;
+        hoistExports(moduleName, referencedName);
+        let textToPaste = referencedName + " = " + constructionName + ";";
         edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
     }
 
     function transformExportClass(node, className) {
         let moduleName = getModuleName(node);
         var constructionName = className.constructionName, dotPropertyName = className.dotPropertyName;
-        let textToPaste = ";" + moduleName + "." + dotPropertyName + " = " + constructionName + ";";
+        let referencedName = moduleName + "." + dotPropertyName;
+        hoistExports(moduleName, referencedName);
+        let textToPaste = ";" + referencedName + " = " + constructionName + ";";
         edits.push({pos: node.end, end: node.end, order: 2, afterEnd: textToPaste});
     }
 
@@ -1445,6 +1476,8 @@ function deTypescript(fileNames, options, code) {
                 });
                 if (!ts.isArrayBindingPattern(decl.name) && !ts.isObjectBindingPattern(decl.name)) {
                     let elName = decl.name.getText();
+                    if (!hasDeclareModifier(node))
+                        hoistExports(moduleName, moduleName + "." + elName);
                     if (moduleName === "exports" && !modulesIdentifiers[elName]) {
                         modulesIdentifiers[elName] = moduleName;
                     }
@@ -1611,15 +1644,16 @@ function deTypescript(fileNames, options, code) {
             pos: startPos,
             end: startPos,
             afterEnd: ";Object.defineProperty(exports, \"__esModule\", { value: true });",
-            order: 0
+            order: 1
         });
     }
-    if (exportWrapperExists) {
+    if (allExports.length > 0) {
+        let exportsVoid = allExports.join(" = ") + " = void 0;";
         edits.push({
             pos: startPos,
             end: startPos,
-            afterEnd: ";function __export(m) { for (var p in m) if (!exports.hasOwnProperty(p)) exports[p] = m[p];}",
-            order: 1
+            afterEnd: exportsVoid,
+            order: 0
         });
     }
     return {edits: edits, diagnostics: syntacticErrors};
