@@ -72,7 +72,6 @@ function deTypescript(fileNames, options, code) {
     var fileNameRegExp = new RegExp(fileNames[0]);
     var startPos = 0;
     var allExports = [];
-    var classDecoratorsWrappers = [];
     var namingCounter = 10;
     var tempVarPos;
     let syntacticErrors = program.getSyntacticDiagnostics();
@@ -438,43 +437,20 @@ function deTypescript(fileNames, options, code) {
                 }
             });
             if (hasParametersDecorators(node) && !node.parent.decorators) {
+                classLet(node);
                 var className = getClassName(node.parent, true);
                 var decorators = ";" + className.constructionName + "= __decorate([";
                 decorators += commentOutParametersDecorators(node);
                 decorators = decorators.slice(0, -1) + "], " + className.constructionName + ");";
-                if (!hasClassWrapper(className.constructionName + node.parent.pos)) {
-                    edits.push({
-                        pos: node.parent.end, end: node.parent.end,
-                        order: 2,
-                        afterEnd: " return " + className.constructionName + ";})();"
-                    });
-                    edits.push({
-                        pos: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                        end: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                        afterEnd: "let " + className.constructionName + " = (() => { let " + className.constructionName + " = "
-                    });
-                } else {
-                    classLet(node);
-                }
                 edits.push({pos: node.parent.end, end: node.parent.end, order: 1, afterEnd: decorators});
             }
         }
     }
 
-    function hasClassWrapper(name) {
-        if (classDecoratorsWrappers.indexOf(name) === -1) {
-            classDecoratorsWrappers.push(name);
-            return false;
-        }
-        return true;
-    }
-
     function transformClass(node) {
         var className = getClassName(node);
         if (node.decorators && node.decorators.length) {
-            let afterEnd = "let " + className.constructionName + "= (() => {" + "let " + className.constructionName + " = ";
-            //just in case of merged classes?
-            hasClassWrapper(className.constructionName + node.pos);
+            let afterEnd = "let " + className.constructionName + "= ";
             edits.push({
                 pos: node.pos + node.getLeadingTriviaWidth(),
                 end: node.decorators.end,
@@ -492,7 +468,7 @@ function deTypescript(fileNames, options, code) {
                     decorators += commentOutParametersDecorators(constructor);
                 }
             }
-            decorators = decorators.slice(0, -1) + "], " + className.constructionName + "); return " + className.constructionName + ";})();";
+            decorators = decorators.slice(0, -1) + "], " + className.constructionName + ");";
             edits.push({pos: node.end, end: node.end, order: 1, afterEnd: decorators});
         }
         if (hasExportModifier(node)) {
@@ -789,36 +765,10 @@ function deTypescript(fileNames, options, code) {
                     }
                     decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
                 }
-                if (!node.parent.decorators && !hasClassWrapper(className + node.parent.pos)) {
-                    edits.push({
-                        pos: node.parent.end, end: node.parent.end,
-                        order: 2,
-                        afterEnd: " return " + className + ";})();"
-                    });
-                    edits.push({
-                        pos: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                        end: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                        afterEnd: "let " + className + " = (() => {",
-                        order: 1
-                    });
-                }
                 edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
             }
         } else {
             if (hasParametersDecorators(node)) {
-                if (!node.parent.decorators && !hasClassWrapper(className + node.parent.pos)) {
-                    edits.push({
-                        pos: node.parent.end, end: node.parent.end,
-                        order: 2,
-                        afterEnd: " return " + className + ";})();"
-                    });
-                    edits.push({
-                        pos: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                        end: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                        afterEnd: "let " + className + " = (() => {",
-                        order: 1,
-                    });
-                }
                 var decorators = ";__decorate([";
                 decorators += commentOutParametersDecorators(node);
                 decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";

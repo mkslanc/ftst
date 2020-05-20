@@ -1,12 +1,11 @@
 {
   "name": "ftst",
   "version": "1.0.0",
-  "publishConfig": { "registry": "https://npm.pkg.github.com/" },
   "scripts": {
     "test": "mocha"
   },
   "dependencies": {
-    "typescript": "latest"
+    "typescript": "3.9.5"
   },
   "devDependencies": {
     "mocha": "^7.2.0",
@@ -16,7 +15,7 @@
     "dir-compare": "^2.2.0"
   },
   "repository": {
-    "type" : "git",
-    "url" : "https://github.com/mkslanc/ftst.git"
+    "type": "git",
+    "url": "https://github.com/mkslanc/ftst.git"
   }
 }
