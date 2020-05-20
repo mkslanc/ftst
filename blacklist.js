@@ -26,6 +26,7 @@ exports.blackList =
         "compiler/exportAlreadySeenJs.js",
         "compiler/exportAssignmentWithDeclareModifierJs.js",
         "compiler/classExpressionPropertyModifiersJs.js",
+        "compiler/importDeclWithDeclareModifierJs.js",
         //TS1095: A 'set' accessor cannot have a return type annotation.
         "conformance/parser/ecmascript5/Accessors/parserSetAccessorWithTypeAnnotation1Js.js",
         //just ignoring this wrong elements
@@ -44,6 +45,7 @@ exports.blackList =
         "conformance/decorators/invalid/decoratorOnVarJs.js",
         "conformance/decorators/class/accessor/decoratorOnClassAccessor7Js.js",
         //should be bug with non-deleted unnecessary wrapper
+        "compiler/collisionExportsRequireAndAmbientEnum.ts/collisionExportsRequireAndAmbientEnum_externalmoduleJs.js",
         "compiler/declareAlreadySeenJs.js",
         "compiler/implicitAnyInAmbientDeclarationJs.js",
         "compiler/enumAssignmentCompat3Js.js",
@@ -53,7 +55,10 @@ exports.blackList =
         "conformance/controlFlow/neverReturningFunctions1Js.js",
         "conformance/controlFlow/assertionTypePredicates1Js.js",
         "compiler/varBlockJs.js",
+        "compiler/collisionExportsRequireAndAmbientClass.ts/collisionExportsRequireAndAmbientClass_externalmoduleJs.js",
         //differences with constructor transformation
+        "compiler/classIndexer5Js.js",
+        "compiler/unusedPrivateMembersJs.js",
         "compiler/commentsInheritanceJs.js",
         "conformance/parser/ecmascript6/ComputedPropertyNames/parserComputedPropertyName25Js.js",
         "conformance/parser/ecmascript5/ComputedPropertyNames/parserES5ComputedPropertyName10Js.js",
@@ -339,6 +344,7 @@ exports.blackList =
         //TODO: trailing slashes in imports?
         "compiler/importWithTrailingSlash.ts/a/testJs.js",
         "compiler/importWithTrailingSlash.ts/a/b/testJs.js",
+        "compiler/exportStarNotElided.ts/data1Js.js",
         //TS1315:
         "conformance/externalModules/umd-errors.ts/err5Js.js",
         //strange case with quoted constructors
@@ -359,5 +365,10 @@ exports.blackList =
         //just shadow import
         "compiler/noCrashOnImportShadowing.ts/aJs.js",
         //strange case
-        "compiler/parseGenericArrowRatherThanLeftShiftJs.js"
+        "compiler/parseGenericArrowRatherThanLeftShiftJs.js",
+        "compiler/reExportUndefined1.ts/aJs.js",
+        //Object.defineProperty instead of exports
+        "conformance/es6/modules/exportsAndImports3-amd.ts/t1Js.js",
+        "conformance/es6/modules/exportsAndImports3-es6.ts/t1Js.js",
+        "conformance/es6/modules/exportsAndImports3.ts/t1Js.js",
     ];

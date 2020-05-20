@@ -68,6 +68,17 @@ function generateJavaScriptFile(path, options) {
                         }
                     }
                 }
+                var exportDefineMatch = first.match(/Object\.defineProperty\(exports,.*?\);/gm);
+                if (exportDefineMatch) {
+                    for (var i = 0; i < exportDefineMatch.length; i++) {
+                        var exportDefineFoundRegExp = new RegExp(exportDefineMatch[i].replace(/([()\[\]|.])/g,"\\$1"));
+                        if (exportDefineFoundRegExp.test(second)) {
+                            first = first.replace(exportDefineFoundRegExp, "");
+                            second = second.replace(exportDefineFoundRegExp, "");
+                        }
+                    }
+                }
+
                 second = second.replace(/(?<=^|[^/])[/][*][\s\S]*?[*][/]/gm, "");
                 //second = second.replace(/\/\/\s@Filename: .*?\.json.*?(?=\/\/\s@|$)/gs, "");
                 second = second.replace(/[/][/].*$/gm, "");

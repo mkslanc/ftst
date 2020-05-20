@@ -547,7 +547,7 @@ function deTypescript(fileNames, options, code) {
                 }
             case ts.SyntaxKind.Identifier:
                 let symbol = checker.getSymbolAtLocation(identifier);
-                if (symbol && symbol.declarations) {
+                if (symbol && symbol.declarations && symbol.declarations.length > 0) {
                     return checkNonEmitDeclarations(symbol);
                 }
         }
@@ -1005,7 +1005,7 @@ function deTypescript(fileNames, options, code) {
             //TODO: exclude type only exports
             let symbol = checker.getSymbolAtLocation(el.name);
             var alias = getAliasSymbol(symbol);
-            if (alias && alias.declarations && checkNonEmitDeclarations(alias)) {
+            if (alias && alias.declarations && alias.declarations.length > 0 && checkNonEmitDeclarations(alias)) {
                 return;
             }
             if (isImportedIdentifier(elPropertyName) && !moduleName) {
@@ -1036,10 +1036,8 @@ function deTypescript(fileNames, options, code) {
                     hoistExports("exports", "exports." + elName, true);
                     if (transform.replace) {
                         identifier = transform.afterEnd;
-
                     } else {
                         identifier = transform.afterEnd + elPropertyName;
-
                     }
                     if (transform.isStarImport || /[.]default/.test(identifier)) {
                         text = "exports." + elName + " = " + identifier + ";";
