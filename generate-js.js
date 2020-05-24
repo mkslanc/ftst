@@ -654,7 +654,8 @@ function deTypescript(fileNames, options, code) {
                     edits.push({
                         pos: node.parent.pos + node.parent.getLeadingTriviaWidth(),
                         end: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                        afterEnd: "let " + className + " = (() => {"
+                        afterEnd: "let " + className + " = (() => {",
+                        order: 1
                     });
                 }
                 edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
@@ -670,7 +671,8 @@ function deTypescript(fileNames, options, code) {
                     edits.push({
                         pos: node.parent.pos + node.parent.getLeadingTriviaWidth(),
                         end: node.parent.pos + node.parent.getLeadingTriviaWidth(),
-                        afterEnd: "let " + className + " = (() => {"
+                        afterEnd: "let " + className + " = (() => {",
+                        order: 1,
                     });
                 }
                 var decorators = ";__decorate([";
@@ -1147,7 +1149,8 @@ function deTypescript(fileNames, options, code) {
                 edits.push({
                     pos: classParent.pos + classParent.getLeadingTriviaWidth(),
                     end: classEnd,
-                    afterEnd: afterEnd
+                    afterEnd: afterEnd,
+                    order: 0
                 });
             }
         }
@@ -1278,6 +1281,8 @@ function deTypescript(fileNames, options, code) {
         let enumName = node.name.getText();
         let textToPaste, initializer, computed = false;
         var enumMemberTransform = [];
+        var enumMemberReferenced = [];
+        let needWrap = needWrapWithBlock(node);
         if (node.members && node.members.length > 0) {
             initializer = 0;
             let membersLength = node.members.length;
@@ -1291,14 +1296,16 @@ function deTypescript(fileNames, options, code) {
                         if (initializer == undefined) {
                             evaluateBinaryExpression(node.members[i].initializer);
                             let currentText = node.members[i].initializer.getText();
-
                             enumMemberTransform.forEach(function (el) {
                                 let regExp = new RegExp("([^.\w]|^)(" + el + ")([^.\w]|$)");
                                 currentText = currentText.replace(regExp, "$1" + enumName + "." + el + "$3");
                             });
-
+                            enumMemberReferenced.forEach(function (el) {
+                                currentText = currentText.replace(el.member, el.reference + el.member);
+                            });
                             initializer = currentText;
                             enumMemberTransform = [];
+                            enumMemberReferenced = [];
                             computed = true;
                         }
                     }
@@ -1351,7 +1358,7 @@ function deTypescript(fileNames, options, code) {
                 (moduleName != "exports") ?
                     "let " + enumName + ";(function (" + enumName + ")" :
                     "var " + enumName + ";(function (" + enumName + ")";
-            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: textToPaste});
+            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: (needWrap)?'{ '+ textToPaste: textToPaste});
             textToPaste = ")(" + enumName + " = " + referencedName + " || (" + referencedName + " = {}));";
         } else {
             textToPaste = isDuplicatedDeclaration(node) ?
@@ -1359,16 +1366,25 @@ function deTypescript(fileNames, options, code) {
                 (!isGlobalScoped(node)) ?
                     "let " + enumName + ";(function (" + enumName + ")" :
                     "var " + enumName + ";(function (" + enumName + ")";
-            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: textToPaste});
+            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: (needWrap)?'{ '+ textToPaste: textToPaste});
             textToPaste = ")(" + enumName + " || (" + enumName + " = {}));";
         }
-        edits.push({pos: node.end, end: node.end, afterEnd: textToPaste});
+        edits.push({pos: node.end, end: node.end, afterEnd: (needWrap) ? textToPaste + ' }' : textToPaste});
 
         function evaluateBinaryExpression(expr) {
             switch (expr.kind) {
                 case ts.SyntaxKind.BinaryExpression:
                     evaluateBinaryExpression(expr.left);
                     evaluateBinaryExpression(expr.right);
+                    break;
+                case ts.SyntaxKind.PropertyAccessExpression:
+                    let testReferenced = expr;
+                    while (ts.isPropertyAccessExpression(testReferenced)) {
+                        testReferenced = testReferenced.expression;
+                    }
+                    let reference = getReferencedIdentifier(testReferenced);
+                    if (reference.text != "")
+                        enumMemberReferenced.push({"reference": reference.text, "member": expr.getText()});
                     break;
                 case ts.SyntaxKind.Identifier:
                     var identifier = expr;
@@ -1381,6 +1397,16 @@ function deTypescript(fileNames, options, code) {
                     break;
             }
         }
+    }
+
+    function needWrapWithBlock(node) {
+        return (ts.isIfStatement(node.parent) ||
+            ts.isDoStatement(node.parent) ||
+            ts.isWhileStatement(node.parent) ||
+            ts.isWithStatement(node.parent) ||
+            ts.isForStatement(node.parent) ||
+            ts.isForOfStatement(node.parent) ||
+            ts.isForInStatement(node.parent))
     }
 
     function hasParametersDecorators(node) {
@@ -1396,7 +1422,7 @@ function deTypescript(fileNames, options, code) {
     function isGlobalScoped(node) {
         do {
             node = node.parent;
-            if (ts.isModuleDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node))
+            if (ts.isModuleDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node) || ts.isBlock(node))
                 return false;
         } while (!ts.isSourceFile(node));
         return true;
@@ -1763,7 +1789,6 @@ function applyEdits(code, remove, edits) {
         start = start.slice(0, edit.pos)
     });
     end = start + end;
-    end = end.replace(/[;]+/g, ";");//normalize amount of ;
     return end;
 }
 
