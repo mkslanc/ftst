@@ -1,11 +1,18 @@
 {
   "name": "ignore-typescript-types",
-  "version": "0.0.1",
+  "version": "0.5",
+  "scripts": {
+    "test": "mocha",
+    "first-run": ".\\first-run.sh"
+  },
   "dependencies": {
-    "colors": "^1.4.0",
+    "typescript": "latest"
+  },
+  "devDependencies": {
+    "mocha": "^7.2.0",
+    "prettier": "latest",
     "diff": "^4.0.2",
-    "dir-compare": "^2.2.0",
-    "typescript": "latest",
-    "prettier": "latest"
+    "colors": "^1.4.0",
+    "dir-compare": "^2.2.0"
   }
 }
