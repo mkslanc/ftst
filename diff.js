@@ -1,3 +1,4 @@
+const prettier = require("prettier");
 require('colors');
 var jsdiff = require('diff');
 var fs = require("fs");
@@ -29,7 +30,7 @@ function generateJavaScriptFile(path, options) {
             if (!fs.existsSync(newFileName))
                 return;
             var second = fs.readFileSync(newFileName, "utf8");
-            //TODO: delete it! for our tests we just ignoring files with "static" word
+
             if (first && second && !/static\s/.test(first)) {
                 var span = '';
 
@@ -58,7 +59,7 @@ function generateJavaScriptFile(path, options) {
                         second = second.replace(defaultFoundRegExp, "");
                     }
                 }
-                var exportMatch = first.match(/exports[.][\w_]+\s*=\s*[\w._]+/gm);
+                var exportMatch = first.match(/exports[.][\w_]+\s*=\s*[\w._]+(?=;|$)/gm);
                 if (exportMatch) {
                     for (var i = 0; i < exportMatch.length; i++) {
                         var exportFoundRegExp = new RegExp(exportMatch[i]);
@@ -80,49 +81,36 @@ function generateJavaScriptFile(path, options) {
                 }
 
                 second = second.replace(/(?<=^|[^/])[/][*][\s\S]*?[*][/]/gm, "");
-                //second = second.replace(/\/\/\s@Filename: .*?\.json.*?(?=\/\/\s@|$)/gs, "");
                 second = second.replace(/[/][/].*$/gm, "");
+                try {
+                    second = prettier.format(second, {semi: false, parser: "babel" });
+                } catch (e) {
+                    return;
+                }
+                try {
+                    first = prettier.format(first, {semi: false, parser: "babel" });
+                } catch (e) {
+                    console.log(path + "\r\n");
+                    console.log(e);
+                    return;
+                }
+
                 //TODO: experimental!
                 first = first.replace(/constructor\s*\((?:[\w\s,]*)?\)\s*{/gm, "");
                 second = second.replace(/constructor\s*\((?:[\w\s,]*)?\)\s*{/gm, "");
-                first = first.replace(/(?:\(\s*)?this(?:\s*\))?[.\[]/gm, "");
-                second = second.replace(/(?:\(\s*)?this(?:\s*\))?[.\[]/gm, "");
+                first = first.replace(/(\(\s*)?this(\s*\))?(?:[.]|\[(.*?)\])/gm, "$1$2$3");
+                second = second.replace(/(\(\s*)?this(\s*\))?(?:[.]|\[(.*?)\])/gm, "$1$2$3");
                 first = first.replace(/super\(.*?\)/gs, "");
                 second = second.replace(/super\(.*?\)/gs, "");
                 // ^^^^^^^^^^^^^^^^^^^^^^^^^
-                first = first.replace(/(\s)+/gs,'$1');
-                second = second.replace(/(\s)+/gs,'$1');
-                first = first.replace(/[;]+/gs,' ');
-                second = second.replace(/[;]+/gs,' ');
 
                 var diff = jsdiff.diffWords(first, second);
                 if (diff.length > 1 || (diff.length == 1 && (diff[0].added || diff[0].removed))) {
                     for (var i = 0; i < diff.length; i++) {
                         if ((diff[i].removed || diff[i].added)) {
-                            if (/^[*\s;'"(),/~.\]\[-]+$/s.test(diff[i].value)) {
+                            if (/^[\s]+$/s.test(diff[i].value) || /^\s*[{}];?\s*$/s.test(diff[i].value) || /#[\w]+\s*}?/.test(diff[i].value)) {
                                 diff.splice(i, 1);
                                 i--;
-                            } else {
-                                if ((/^(?:constructor\((?:[\s\w,]*)?\)\s*)?(?:{\s*)?(?:super\(...arguments\)[; ])?\s*(:?this\.)?$/s.test(diff[i].value) || /^this\.$/s.test(diff[i].value) || /^\s*[{}];?\s*$/s.test(diff[i].value))) {
-                                    diff.splice(i, 1);
-                                    i--;
-                                } else {
-                                    if (/Object\.defineProperty\(exports,/.test(diff[i].value)) {
-                                        diff.splice(i, 1);
-                                        i--;
-
-                                    } else {
-                                        if (/"__esModule", { value: true }\)[; ]/.test(diff[i].value)) {
-                                            diff.splice(i, 1);
-                                            i--;
-                                        } else {//private identifiers
-                                            if (/#[\w]+\s*}?/.test(diff[i].value)) {
-                                                diff.splice(i, 1);
-                                                i--;
-                                            }
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -141,7 +129,6 @@ function generateJavaScriptFile(path, options) {
                         var sourceText = `<pre>` + span + `</pre>`;
                         fs.writeFileSync(process.argv[3] +'/' + path + '.html', sourceText);
                     }
-
                 }
             }
         } else if (stat.isDirectory()) {
