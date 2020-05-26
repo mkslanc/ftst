@@ -1,4 +1,7 @@
 var fs = require("fs");
+var mocha = require('mocha');
+var ts = require("typescript");
+var transpiler = require("../transpiler");
 var assert = require('assert');
 var blacklist = require('../blacklist').blackList;
 var utilities = require("../utilities-diff");
@@ -12,7 +15,7 @@ function add(path) {
     } catch (e) {
         return;
     }
-    if (stat.isFile() && /Js\.js$/.test(path)) {
+    if (stat.isFile() && /([^d]|[^.]d)\.ts$/.test(path)) {
         if (blacklist.indexOf(path) > -1) {
             tests.push({path: path, skipped: true});
         } else {
@@ -26,17 +29,36 @@ function add(path) {
     }
 }
 
-describe('Tests running on TS test cases comparing transpiling diffs: ', function () {
+mocha.describe('Tests running on TS test cases comparing transpiling diffs: ', function () {
+    var options = {
+        compilerOptions: {
+            newLine: "lf",
+            downlevelIteration: true,
+            suppressExcessPropertyErrors: true,
+            module: ts.ModuleKind.CommonJS,
+            removeComments: false,
+            target: ts.ScriptTarget.ESNext,
+            noEmitHelpers: true,
+            preserveConstEnums: true,
+            noImplicitUseStrict: true
+        },
+        fileName: 'transpile-dummy.ts',
+        reportDiagnostics: true
+    };
 
     tests.forEach(function (test) {
         if (test.skipped) {
-            it.skip('no significant diffs with TS in `' + test.path + '`', function () {
-                let equals = utilities.equalResults(test.path);
-                assert.ok(!(equals && Array.isArray(equals)));
+            mocha.it.skip('no significant diffs with TS in `' + test.path + '`', function () {
+
             });
         } else {
-            it('no significant diffs with TS in `' + test.path + '`', function () {
-                let equals = utilities.equalResults(test.path);
+            mocha.it('no significant diffs with TS in `' + test.path + '`', function () {
+                var tsFile = fs.readFileSync(test.path, "utf8");
+                let myResult = transpiler.transpileModule(tsFile, options);
+                if (myResult.diagnostics.length > 0)
+                    this.skip();
+                let tsResult = ts.transpileModule(tsFile, options);
+                let equals = utilities.equalResults(myResult.outputText, tsResult.outputText);
                 assert.ok(!(equals && Array.isArray(equals)));
             });
         }

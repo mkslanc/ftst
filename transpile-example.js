@@ -1,5 +1,5 @@
 var ts = require("typescript");
-var dts = require("./generate-js");
+var transpiler = require("./transpiler");
 //Example from TypeScript Handbook
 var source = "import \"reflect-metadata\";\n" +
     "\n" +
@@ -32,7 +32,7 @@ var source = "import \"reflect-metadata\";\n" +
     "    }\n" +
     "}";
 
-let result = dts.transpileModule(source, {
+let result = transpiler.transpileModule(source, {
     target: ts.ScriptTarget.ES5,
     module: "None",
     allowJs: false,

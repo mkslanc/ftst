@@ -16,9 +16,9 @@ function generateDiffHtmls(path, options) {
         } catch (e) {
             return;
         }
-        if (stat.isFile() && /Js\.js$/.test(path) && blackList.indexOf(path) === -1) {
+        if (stat.isFile() && /([^d]|[^.]d)\.ts$/.test(path) && blackList.indexOf(path) === -1) {
             //console.log(path + "\r\n");
-            var diffs = utilities.equalResults(path);
+            var diffs = utilities.equalResultsFromFiles(path);
             if (diffs && Array.isArray(diffs)) {
                 var span = '';
 

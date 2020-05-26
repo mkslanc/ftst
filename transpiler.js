@@ -1,6 +1,5 @@
 "use strict";
 var ts = require("typescript");
-var fs = require("fs");
 var utilities = require("./utilities-ts");
 
 function createCompilerHost(options, code) {
@@ -54,33 +53,10 @@ function createCompilerHost(options, code) {
     }
 }
 
-function generateJavaScriptFile(path, options) {
-    add(path[0]);
-
-    function add(path) {
-        try {
-            var stat = fs.statSync(path);
-        } catch (e) {
-            return;
-        }
-        if (stat.isFile() && /([^d]|[^.]d)\.ts$/.test(path) && !/binderBinaryExpressionStress/.test(path)) {
-            var fileArr = [];
-            fileArr.push(path);
-            var filename = path.replace(/.ts$/, "Js.js");
-            fs.copyFileSync(path, filename);
-            let edits = deTypescript(fileArr, options);
-            applyEditsToFile(filename, edits.edits);
-        } else if (stat.isDirectory()) {
-            var files = fs.readdirSync(path).sort();
-            files.forEach(function (name) {
-                add(path + "/" + name)
-            });
-        }
-    }
-}
-
 function deTypescript(fileNames, options, code) {
     var host = createCompilerHost(options, code);
+    if (!Array.isArray(fileNames))
+        fileNames = [fileNames];
     var program = ts.createProgram(fileNames, options, host);
     var checker = program.getTypeChecker();
     var edits = [];
@@ -1735,13 +1711,6 @@ function isInsideCoords(firstObject, secondObject) {
     return firstObject.pos >= secondObject.pos && firstObject.end <= secondObject.end;
 }
 
-function applyEditsToFile(filename, edits) {
-    var start = fs.readFileSync(filename, "utf8");
-    start = start.replace(/^\uFEFF/, '');
-    var end = applyEdits(start, (process.argv[3] == "-d"), edits);
-    fs.writeFileSync(filename, end);
-}
-
 function serveEdits(edits) {
     edits.sort((a, b) => b.end - a.end || a.order - b.order);
 
@@ -1814,18 +1783,4 @@ var transpileModule = function (code, options, remove) {
 exports.transpile = transpile;
 exports.transpileModule = transpileModule;
 exports.ModuleKind = ts.ModuleKind;
-
-if (process.argv.length > 2) {
-    generateJavaScriptFile(process.argv.slice(2), {
-        target: ts.ScriptTarget.ESNext,
-        module: "None",
-        allowJs: false,
-        lib: [],
-        types: [],
-        noEmit: true,
-        noLib: true,
-        noResolve: true,
-        isolatedModules: true,
-        suppressOutputPathCheck: true
-    });
-}
+exports.ScriptKind = ts.ScriptKind;

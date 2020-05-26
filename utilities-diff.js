@@ -5,87 +5,86 @@ var jsdiff = require('diff');
 /**
  * @return {undefined|Array|boolean}
  */
-exports.equalResults = function (path) {
-    var first = fs.readFileSync(path, "utf8");
-
-    var newFileName = path.replace(/Js\.js/, "Ts.js");
+exports.equalResultsFromFiles = function (path) {
+    var firstFileName = path.replace(/\.ts/, "Js.js");
+    if (!fs.existsSync(firstFileName))
+        return;
+    var first = fs.readFileSync(firstFileName, "utf8");
+    var newFileName = path.replace(/\.ts/, "Ts.js");
     if (!fs.existsSync(newFileName))
         return;
     var second = fs.readFileSync(newFileName, "utf8");
+    return equalResults(first, second);
+};
 
-    if (first && second && !/static\s/.test(first)) {
+var equalResults = exports.equalResults = function (myCode, tsCode) {
+    if (myCode && tsCode && !/static\s/.test(myCode)) {
 
-        first = first.replace("Object.defineProperty(exports, \"__esModule\", { value: true });", "");
-        second = second.replace("Object.defineProperty(exports, \"__esModule\", { value: true });", "");
+        myCode = myCode.replace("Object.defineProperty(exports, \"__esModule\", { value: true });", "");
+        tsCode = tsCode.replace("Object.defineProperty(exports, \"__esModule\", { value: true });", "");
 
-        first = first.replace(/(?<=^|[^/]|[*][/])[/][*][\s\S]*?[*][/]/gm, "");
-        first = first.replace(/[/][/].*$/gm, "");
+        myCode = myCode.replace(/(?<=^|[^/]|[*][/])[/][*][\s\S]*?[*][/]/gm, "");
+        myCode = myCode.replace(/[/][/].*$/gm, "");
 
-        first = first.replace(/exports[.][\w_]+\s*=\s*.*void 0;/, "");
-        second = second.replace(/exports[.][\w_]+\s*=\s*.*void 0;/, "");
+        myCode = myCode.replace(/exports[.][\w_]+\s*=\s*.*void 0;/, "");
+        tsCode = tsCode.replace(/exports[.][\w_]+\s*=\s*.*void 0;/, "");
 
-        var moduleMatch = first.match(/module[.]exports\s*=.*(?=$|\s*[/][/])/m);
+        var moduleMatch = myCode.match(/module[.]exports\s*=.*(?=$|\s*[/][/])/m);
         if (moduleMatch) {
             var moduleFoundRegExp = new RegExp(moduleMatch[0].replace(/([()\[\]|])/g, "\\$1"));
-            if (moduleFoundRegExp.test(second)) {
-                first = first.replace(moduleFoundRegExp, "");
-                second = second.replace(moduleFoundRegExp, "");
+            if (moduleFoundRegExp.test(tsCode)) {
+                myCode = myCode.replace(moduleFoundRegExp, "");
+                tsCode = tsCode.replace(moduleFoundRegExp, "");
             }
         }
-        var defaultMatch = first.match(/exports[.]default\s*=[^(;\r\n]*;/);
+        var defaultMatch = myCode.match(/exports[.]default\s*=[^(;\r\n]*;/);
         if (defaultMatch) {
             var defaultFoundRegExp = new RegExp(defaultMatch[0]);
-            if (defaultFoundRegExp.test(second)) {
-                first = first.replace(defaultFoundRegExp, "");
-                second = second.replace(defaultFoundRegExp, "");
+            if (defaultFoundRegExp.test(tsCode)) {
+                myCode = myCode.replace(defaultFoundRegExp, "");
+                tsCode = tsCode.replace(defaultFoundRegExp, "");
             }
         }
-        var exportMatch = first.match(/exports[.][\w_]+\s*=\s*[\w._]+(?=;|$)/gm);
+        var exportMatch = myCode.match(/exports[.][\w_]+\s*=\s*[\w._]+(?=;|$)/gm);
         if (exportMatch) {
             for (var i = 0; i < exportMatch.length; i++) {
                 var exportFoundRegExp = new RegExp(exportMatch[i]);
-                if (exportFoundRegExp.test(second)) {
-                    first = first.replace(exportFoundRegExp, "");
-                    second = second.replace(exportFoundRegExp, "");
+                if (exportFoundRegExp.test(tsCode)) {
+                    myCode = myCode.replace(exportFoundRegExp, "");
+                    tsCode = tsCode.replace(exportFoundRegExp, "");
                 }
             }
         }
-        var exportDefineMatch = first.match(/Object\.defineProperty\(exports,.*?\);/gm);
+        var exportDefineMatch = myCode.match(/Object\.defineProperty\(exports,.*?\);/gm);
         if (exportDefineMatch) {
             for (var i = 0; i < exportDefineMatch.length; i++) {
                 var exportDefineFoundRegExp = new RegExp(exportDefineMatch[i].replace(/([()\[\]|.])/g, "\\$1"));
-                if (exportDefineFoundRegExp.test(second)) {
-                    first = first.replace(exportDefineFoundRegExp, "");
-                    second = second.replace(exportDefineFoundRegExp, "");
+                if (exportDefineFoundRegExp.test(tsCode)) {
+                    myCode = myCode.replace(exportDefineFoundRegExp, "");
+                    tsCode = tsCode.replace(exportDefineFoundRegExp, "");
                 }
             }
         }
 
-        second = second.replace(/(?<=^|[^/])[/][*][\s\S]*?[*][/]/gm, "");
-        second = second.replace(/[/][/].*$/gm, "");
+        tsCode = tsCode.replace(/(?<=^|[^/])[/][*][\s\S]*?[*][/]/gm, "");
+        tsCode = tsCode.replace(/[/][/].*$/gm, "");
         try {
-            second = prettier.format(second, {semi: false, parser: "babel"});
+            tsCode = prettier.format(tsCode, {semi: false, parser: "babel"});
         } catch (e) {
             return;
         }
-        try {
-            first = prettier.format(first, {semi: false, parser: "babel"});
-        } catch (e) {
-            console.log(path + "\r\n");
-            console.log(e);
-            return;
-        }
+        myCode = prettier.format(myCode, {semi: false, parser: "babel"});
 
         //TODO: experimental!
-        first = first.replace(/constructor\s*\((?:[\w\s,]*)?\)\s*{/gm, "");
-        second = second.replace(/constructor\s*\((?:[\w\s,]*)?\)\s*{/gm, "");
-        first = first.replace(/(\(\s*)?this(\s*\))?(?:[.]|\[(.*?)\])/gm, "$1$2$3");
-        second = second.replace(/(\(\s*)?this(\s*\))?(?:[.]|\[(.*?)\])/gm, "$1$2$3");
-        first = first.replace(/super\(.*?\)/gs, "");
-        second = second.replace(/super\(.*?\)/gs, "");
+        myCode = myCode.replace(/constructor\s*\((?:[\w\s,]*)?\)\s*{/gm, "");
+        tsCode = tsCode.replace(/constructor\s*\((?:[\w\s,]*)?\)\s*{/gm, "");
+        myCode = myCode.replace(/(\(\s*)?this(\s*\))?(?:[.]|\[(.*?)\])/gm, "$1$2$3");
+        tsCode = tsCode.replace(/(\(\s*)?this(\s*\))?(?:[.]|\[(.*?)\])/gm, "$1$2$3");
+        myCode = myCode.replace(/super\(.*?\)/gs, "");
+        tsCode = tsCode.replace(/super\(.*?\)/gs, "");
         // ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-        var diff = jsdiff.diffWords(first, second);
+        var diff = jsdiff.diffWords(myCode, tsCode);
         if (diff.length > 1 || (diff.length == 1 && (diff[0].added || diff[0].removed))) {
             for (var i = 0; i < diff.length; i++) {
                 if ((diff[i].removed || diff[i].added)) {
