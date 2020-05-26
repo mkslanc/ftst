@@ -532,11 +532,11 @@ function deTypescript(fileNames, options, code) {
 
     function checkNonEmitDeclarations(symbol) {
         return symbol.declarations.every(function (declaration) {
-            return isNonEmited(declaration);
+            return isNonEmitted(declaration);
         });
     }
 
-    function isNonEmited(node) {
+    function isNonEmitted(node) {
         if (ts.isModuleDeclaration(node)) {
             let nestedModule = node;
             while (nestedModule.body.name) {
@@ -544,7 +544,7 @@ function deTypescript(fileNames, options, code) {
             }
             if (nestedModule.body && nestedModule.body.statements) {
                 return nestedModule.body.statements.every(function (statement) {
-                    return isNonEmited(statement);
+                    return isNonEmitted(statement);
                 });
             } else {
                 return true;
@@ -1175,7 +1175,7 @@ function deTypescript(fileNames, options, code) {
         while (nestedModule.body.name) {
             nestedModule = nestedModule.body;
         }
-        if (!isNonEmited(nestedModule)) {
+        if (!isNonEmitted(nestedModule)) {
             if (hasExportModifier(node)) {
                 let parentModuleName = getModuleName(node);
                 let referencedName = parentModuleName + "." + moduleName;
@@ -1240,13 +1240,6 @@ function deTypescript(fileNames, options, code) {
             nested = nested.parent;
         }
         return false;
-    }
-
-    function areNonEmitStatements(statements) {
-        //TODO: this should work also from commented edits from source
-        return statements.every(function (statement) {
-            return (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement));
-        })
     }
 
     function isNonEmitStatement(statement) {
@@ -1334,7 +1327,11 @@ function deTypescript(fileNames, options, code) {
                 (moduleName != "exports") ?
                     "let " + enumName + ";(function (" + enumName + ")" :
                     "var " + enumName + ";(function (" + enumName + ")";
-            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: (needWrap)?'{ '+ textToPaste: textToPaste});
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                end: node.name.end,
+                afterEnd: (needWrap) ? '{ ' + textToPaste : textToPaste
+            });
             textToPaste = ")(" + enumName + " = " + referencedName + " || (" + referencedName + " = {}));";
         } else {
             textToPaste = isDuplicatedDeclaration(node) ?
@@ -1342,7 +1339,11 @@ function deTypescript(fileNames, options, code) {
                 (!isGlobalScoped(node)) ?
                     "let " + enumName + ";(function (" + enumName + ")" :
                     "var " + enumName + ";(function (" + enumName + ")";
-            edits.push({pos: node.pos + node.getLeadingTriviaWidth(), end: node.name.end, afterEnd: (needWrap)?'{ '+ textToPaste: textToPaste});
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                end: node.name.end,
+                afterEnd: (needWrap) ? '{ ' + textToPaste : textToPaste
+            });
             textToPaste = ")(" + enumName + " || (" + enumName + " = {}));";
         }
         edits.push({pos: node.end, end: node.end, afterEnd: (needWrap) ? textToPaste + ' }' : textToPaste});
@@ -1408,16 +1409,6 @@ function deTypescript(fileNames, options, code) {
         if (node.parameters && node.parameters.length > 0) {
             return node.parameters.find(function (param) {
                 if (param.name && param.name.getText() == "this") {
-                    return true
-                }
-            });
-        }
-    }
-
-    function hasImportSpecifierDeclaration(node) {
-        if (node.declarations && node.declarations.length > 0) {
-            return node.declarations.every(function (el) {
-                if (ts.isImportSpecifier(el) || ts.isImportClause(el)) {
                     return true
                 }
             });
@@ -1618,10 +1609,6 @@ function deTypescript(fileNames, options, code) {
             if (ts.isClassDeclaration(parent))
                 return parent;
         }
-    }
-
-    function isInsideFunction(node) {
-        return (node.parent && node.parent.parent && ts.isFunctionDeclaration(node.parent.parent));
     }
 
     function getModuleName(node) {
