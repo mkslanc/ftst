@@ -366,10 +366,6 @@ exports.blackList =
         "conformance/salsa/typeFromPropertyAssignment29.ts",
         "conformance/parser/ecmascriptnext/numericSeparators/parser.numericSeparators.decimal.ts",
         "compiler/bigIntWithTargetES3.ts", //actually bigint
-        //TODO: trailing slashes in imports?
-        "compiler/importWithTrailingSlash.ts/a/test.ts",
-        "compiler/importWithTrailingSlash.ts/a/b/test.ts",
-        "compiler/exportStarNotElided.ts/data1.ts",
         //TS1315:
         "conformance/externalModules/umd-errors.ts/err5.ts",
         //strange case with quoted constructors

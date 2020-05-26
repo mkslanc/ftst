@@ -1624,7 +1624,7 @@ function deTypescript(fileNames, options, code) {
         if (node.moduleSpecifier) {
             var moduleName = node.moduleSpecifier.text;
             if (moduleName != undefined) {
-                return utilities.makeIdentifierFromModuleName(moduleName);
+                return utilities.makeIdentifierFromModuleName(moduleName).replace(/^_(_*)$/,"$1");
             }
         }
     }
