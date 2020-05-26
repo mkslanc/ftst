@@ -45,6 +45,7 @@ mocha.describe('Tests running on TS test cases comparing transpiling diffs: ', f
         fileName: 'transpile-dummy.ts',
         reportDiagnostics: true
     };
+    var tsAllTime = 0n, myAllTime = 0n;
 
     tests.forEach(function (test) {
         if (test.skipped) {
@@ -54,13 +55,26 @@ mocha.describe('Tests running on TS test cases comparing transpiling diffs: ', f
         } else {
             mocha.it('no significant diffs with TS in `' + test.path + '`', function () {
                 var tsFile = fs.readFileSync(test.path, "utf8");
+
+                let myTime = process.hrtime.bigint();
                 let myResult = transpiler.transpileModule(tsFile, options);
                 if (myResult.diagnostics.length > 0)
                     this.skip();
+                myAllTime += process.hrtime.bigint() - myTime;
+
+                let tsTime = process.hrtime.bigint();
                 let tsResult = ts.transpileModule(tsFile, options);
+                tsAllTime += process.hrtime.bigint() - tsTime;
+
                 let equals = utilities.equalResults(myResult.outputText, tsResult.outputText);
                 assert.ok(!(equals && Array.isArray(equals)));
             });
         }
+    });
+
+    mocha.it('execution time of this transpiler should be less than typescripts', function () {
+        console.log ('This transpiler execution time: ' + myAllTime + ' nanoseconds');
+        console.log ('TS transpiler execution time: ' + tsAllTime + ' nanoseconds');
+        assert.ok(myAllTime < tsAllTime);
     });
 });
