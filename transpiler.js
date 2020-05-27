@@ -1770,4 +1770,4 @@ var transpileModule = function (code, options, remove) {
 exports.transpile = transpile;
 exports.transpileModule = transpileModule;
 exports.ModuleKind = ts.ModuleKind;
-exports.ScriptKind = ts.ScriptKind;
+exports.ScriptTarget = ts.ScriptTarget;

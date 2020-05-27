@@ -1,4 +1,3 @@
-var ts = require("typescript");
 var transpiler = require("./transpiler");
 //Example from TypeScript Handbook
 var source = "import \"reflect-metadata\";\n" +
@@ -33,7 +32,7 @@ var source = "import \"reflect-metadata\";\n" +
     "}";
 
 let result = transpiler.transpileModule(source, {
-    target: ts.ScriptTarget.ES5,
+    target: transpiler.ScriptTarget.ES5,
     module: "None",
     allowJs: false,
     lib: [],
