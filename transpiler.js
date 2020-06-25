@@ -72,6 +72,8 @@ function deTypescript(fileNames, options, code) {
     var startPos = 0;
     var allExports = [];
     var classDecoratorsWrappers = [];
+    var namingCounter = 10;
+    var tempVarPos;
     let syntacticErrors = program.getSyntacticDiagnostics();
     if (syntacticErrors.length === 0) {
         let sources = program.getSourceFiles();
@@ -215,8 +217,166 @@ function deTypescript(fileNames, options, code) {
             case (ts.isTypeReferenceNode(node)):
                 return;
         }
+        if (options.target <= ts.ScriptTarget.ES2019) {
+            if (ts.isOptionalChain(node)) {
+                transformOptionalChaining(node);
+                return;
+            }
+            if (ts.isNullishCoalesce(node)) {
+                transformNullishCoalesce(node);
+                return;
+            }
+        }
         commentOutTypes(node);
         ts.forEachChild(node, visit);
+    }
+
+    function transformNullishCoalesce(node) {
+        let tempNode = node;
+        textToPaste = '';
+        var tempVars = [], leftPart = [], rightPart = [];
+            do {
+                let left = (ts.isNullishCoalesce(tempNode.left)) ? tempNode.left.right : tempNode.left;
+                let right = serveExpressions(tempNode.right);
+                if (!ts.isIdentifier(left)) {
+                    let pos = calculatePosForTempVars(node);
+                    var tempVar = createTempVar(pos);
+                    var expr = "(" + tempVar + " = ";
+                } else {
+                    var tempVar = serveExpressions(left);
+                    var expr = "(";
+                }
+                    if (ts.isOptionalChain(tempNode.right)) {
+                        let optChain = transformOptionalChaining(tempNode.right, false);
+                        tempVars.push(tempVar);
+                        leftPart.unshift("(" + tempVar + " = ");
+                        rightPart.unshift(optChain);
+                    } else {
+                        tempVars.push(tempVar);
+                        leftPart.unshift(expr);
+                        rightPart.unshift(right);
+                    }
+                tempNode = tempNode.left;
+            } while (ts.isNullishCoalesce(tempNode));
+
+        leftPart[leftPart.length - 1] += (ts.isOptionalChain(tempNode)) ?
+            transformOptionalChaining(tempNode, false) :
+            serveExpressions(tempNode);
+        textToPaste = leftPart.join('') + rightPart.join('');
+        textToPaste = combineNullishCoalesceExpression();
+        textToPaste = wrapExpression(textToPaste, node);
+        edits.push({
+            pos: node.pos + node.getLeadingTriviaWidth(),
+            end: node.right.pos,
+            afterEnd: textToPaste
+        });
+        commentOutNode(node, textToPaste);
+
+        function combineNullishCoalesceExpression() {
+            var expr = leftPart.join('');
+            tempVars.forEach(function (el, id) {
+                expr += ') !== null && ' + el + ' !== void 0 ? ' + el + ' : ' + rightPart[id];
+            });
+            return expr;
+        }
+    }
+
+    function calculatePosForTempVars(node) {
+        let tempVarPosNode = node;
+        do {
+            tempVarPosNode = tempVarPosNode.parent;
+        } while (!ts.isSourceFile(tempVarPosNode));
+        return tempVarPosNode.pos + tempVarPosNode.getLeadingTriviaWidth();
+    }
+
+    function transformOptionalChaining(node, createEdit = true) {
+        let pos = calculatePosForTempVars(node);
+        let tempVar = '';
+        let expr = serveExpressions(node);
+        let chain = expr.split("?.");
+        let condStr = calcAddParams(node);
+        textToPaste = '';
+        if (chain.length === 2 && /^[\w]+$/.test(chain[0])) {
+            let dot = (chain[1] && /^[\[(]/.test(chain[1])) ? "" : ".";
+            textToPaste = chain[0] + " === null || " + chain[0] + " === void 0 ? " + condStr.cond + " : " + condStr.add + chain[0] + dot;
+        } else {
+            for (let i = 0; i <= chain.length - 2; i++) {
+                if (chain[i + 1] && /^\([^)]*\)/.test(chain[i + 1])) {
+                    let subChain = chain[i].split(".");
+                    let subChainLength = subChain.length - 1;
+                    let submask = (/^\(\)/.test(chain[i + 1])) ? "" : ", $1";
+                    if (subChainLength > 1) {
+                        tempVar = createTempVar(pos);
+                        chain[i] = "(" + tempVar + " = " + chain[i].replace(/\.([^.]*)$/s, ").$1");
+                        chain[i + 1] = chain[i + 1].replace(/^\(([^)]*)\)/, "call(" + tempVar + submask + ")");
+                    } else {
+                        subChain = chain[0].split(".");
+                        if (subChain[0].indexOf("(") === -1) {
+                            chain[i + 1] = chain[i + 1].replace(/^\(([^)]*)\)/, "call(" + subChain[0].replace(/\[.*?]/g, "").replace("super","this") + submask + ")");
+                        }
+                    }
+                }
+
+                let dot = (chain[i + 1] && /^[\[(]/.test(chain[i + 1])) ? "" : ".";
+                if (i === 0 && /^[\w]+$/.test(chain[i])) {
+                        textToPaste = chain[i] + " === null || " + chain[i] + " === void 0 ? void 0 : " + chain[i] + dot;
+                } else {
+                    tempVar = createTempVar(pos);
+                    let lpar = "";
+                    if (chain[i].indexOf("(") === 0) {
+                        lpar = "(";
+                        chain[i] = chain[i].substr(1);
+                    }
+                    if (i === chain.length - 2 && condStr.add !== "") {
+                        textToPaste = lpar + "(" + tempVar + " = " + textToPaste + chain[i] + ") === null || " + tempVar + " === void 0 ? " + condStr.cond + " : " + condStr.add + tempVar + dot;
+                    } else {
+                        textToPaste = lpar + "(" + tempVar + " = " + textToPaste + chain[i] + ") === null || " + tempVar + " === void 0 ? void 0 : " + tempVar + dot;
+                    }
+                }
+            }
+        }
+
+        textToPaste += chain[chain.length - 1];
+
+        textToPaste = wrapExpression(textToPaste, node);
+        if (createEdit) {
+            commentOutNode(node, textToPaste);
+        } else {
+            return textToPaste;
+        }
+
+        function calcAddParams(node) {
+            let parent = node;
+            do {
+                parent = parent.parent;
+                if (ts.isDeleteExpression(parent)) {
+                    edits.push({
+                        pos: parent.pos + parent.getLeadingTriviaWidth(),
+                        end: parent.pos + parent.getLeadingTriviaWidth() + 6
+                    });
+                    return {cond: "true", add: "delete "}
+                }
+            } while (ts.isParenthesizedExpression(parent));
+            return {cond: "void 0", add: ""};
+        }
+
+    }
+
+    function wrapExpression(expr, node) {
+        if (ts.isConditionalExpression(node.parent) || ts.isBinaryExpression(node.parent) || ts.isTypeOfExpression(node.parent)) {
+            return "(" + expr + ")";
+        }
+        return expr;
+    }
+
+
+    function createTempVar(pos) {
+        if (namingCounter === 18 || namingCounter === 23)
+            namingCounter++;
+        let varWrap = "_" + namingCounter.toString(32);
+        tempVarPos = (!tempVarPos) ? pos : tempVarPos;
+        namingCounter++;
+        return varWrap;
     }
 
     function commentOutNode(node, textToPaste) {
@@ -660,15 +820,19 @@ function deTypescript(fileNames, options, code) {
     }
 
     function serveDecorators(expression) {
-        var localEdits = [];
         if (ts.isCallExpression(expression)) {
-            ts.forEachChild(expression, serve);
-            localEdits = compensateByPos(localEdits, expression.pos);
-            return applyEdits(expression.getText(), true, localEdits);
+            return serveExpressions(expression);
         } else {
             let reference = getReferencedIdentifier(expression);
             return reference.text + replaceTypeCastInDecorators(expression.getText());
         }
+    }
+
+    function serveExpressions(expression) {
+        var localEdits = [];
+        serve(expression);
+        localEdits = compensateByPos(localEdits, expression.pos + expression.getLeadingTriviaWidth());
+        return applyEdits(expression.getText(), true, localEdits);
 
         function serve(node) {
             if (ts.isIdentifier(node)) {
@@ -1691,6 +1855,20 @@ function deTypescript(fileNames, options, code) {
             order: 0
         });
     }
+    if (tempVarPos !== undefined) {
+        textToPaste = 'var ';
+        for (let i = 10; i < namingCounter; i++) {
+            if (i === 18 || i === 23)
+                i++;
+            textToPaste += '_' + i.toString(32) + ', ';
+        }
+        textToPaste = textToPaste.slice(0, -2) + ';';
+        edits.push({
+            pos: tempVarPos,
+            end: tempVarPos,
+            afterEnd: textToPaste
+        });
+    }
     return {edits: edits, diagnostics: syntacticErrors};
 }
 
@@ -1760,10 +1938,10 @@ var transpile = function (code, options, remove) {
      * - noResolve = true
      */
 var transpileModule = function (code, options, remove) {
-    options.noResolve = true;
-    options.isolatedModules = true;
-    options.noLib = true;
-    let edits = deTypescript(['transpile-dummy.ts'], options, code);
+    options.compilerOptions.noResolve = true;
+    options.compilerOptions.isolatedModules = true;
+    options.compilerOptions.noLib = true;
+    let edits = deTypescript(['transpile-dummy.ts'], options.compilerOptions, code);
     return {outputText: applyEdits(code, remove, edits.edits), diagnostics: edits.diagnostics};
 };
 
