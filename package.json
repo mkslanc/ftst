@@ -1,6 +1,6 @@
 {
-  "name": "ignore-typescript-types",
-  "version": "0.5",
+  "name": "ftst",
+  "version": "1.0.0",
   "scripts": {
     "test": "mocha",
     "first-run": ".\\first-run.sh"

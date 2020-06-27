@@ -1,5 +1,20 @@
-var transpiler = require("./transpiler");
+var ftst = require("./transpiler");
 //Example from TypeScript Handbook
+var options = {
+    compilerOptions: {
+        newLine: "lf",
+        downlevelIteration: true,
+        suppressExcessPropertyErrors: true,
+        module: ftst.ModuleKind.CommonJS,
+        removeComments: false,
+        target: ftst.ScriptTarget.ES2020,
+        noEmitHelpers: true,
+        preserveConstEnums: true,
+        noImplicitUseStrict: true
+    },
+    fileName: 'transpile-dummy.ts',
+    reportDiagnostics: true
+};
 var source = "import \"reflect-metadata\";\n" +
     "\n" +
     "class Point {\n" +
@@ -31,12 +46,5 @@ var source = "import \"reflect-metadata\";\n" +
     "    }\n" +
     "}";
 
-let result = transpiler.transpileModule(source, {
-    target: transpiler.ScriptTarget.ES5,
-    module: "None",
-    allowJs: false,
-    lib: [],
-    types: [],
-    noEmit: true
-}, true);
+let result = ftst.transpileModule(source, options, true);
 console.log(result);
