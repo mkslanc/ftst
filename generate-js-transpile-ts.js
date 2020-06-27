@@ -39,7 +39,7 @@ function compileTypescript(code, fileName) {
             suppressExcessPropertyErrors: true,
             module: ts.ModuleKind.CommonJS,
             removeComments: false,
-            target: ts.ScriptTarget.ESNext,
+            target: ts.ScriptTarget.ES2020,
             noEmitHelpers: true,
             preserveConstEnums: true,
             noImplicitUseStrict: true

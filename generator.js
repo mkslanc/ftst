@@ -34,15 +34,17 @@ function generateJavaScriptFile(path, options) {
 
 if (process.argv.length > 2) {
     generateJavaScriptFile(process.argv.slice(2), {
-        target: transpiler.ScriptKind.ESNext,
-        module: "None",
-        allowJs: false,
-        lib: [],
-        types: [],
-        noEmit: true,
-        noLib: true,
-        noResolve: true,
-        isolatedModules: true,
-        suppressOutputPathCheck: true
+        compilerOptions: {
+            target: transpiler.ScriptTarget.ES2020,
+            module: "None",
+            allowJs: false,
+            lib: [],
+            types: [],
+            noEmit: true,
+            noLib: true,
+            noResolve: true,
+            isolatedModules: true,
+            suppressOutputPathCheck: true
+        }
     });
 }

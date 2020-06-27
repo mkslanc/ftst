@@ -67,6 +67,7 @@ function deTypescript(fileNames, options, code) {
     var exportWrapperExists = false;
     var moduleReferencesNames = {};
     var modulesIdentifiers = {};
+    var privateProperties = {};
     var textToPaste;
     var fileNameRegExp = new RegExp(fileNames[0]);
     var startPos = 0;
@@ -211,6 +212,13 @@ function deTypescript(fileNames, options, code) {
                 return;
             case (ts.isNonNullExpression(node)):
                 commentOutNonNullExpression(node);
+                break;
+            case (ts.isPrivateIdentifier(node)):
+                if (ts.isPropertyAccessExpression(node.parent)) {
+                    getPrivateProperty(node);
+                } else {
+                    transformPrivateProperty(node);
+                }
                 break;
             case ts.isTypeQueryNode(node):
             case (ts.isTypeParameterDeclaration(node)):
@@ -816,6 +824,72 @@ function deTypescript(fileNames, options, code) {
                 decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
                 edits.push({pos: node.parent.end, end: node.parent.end, order: 0, afterEnd: decorators});
             }
+        }
+    }
+
+    function getPrivatePropertyName(privateId) {
+        return (privateProperties[privateId] === 0) ? privateId : privateId +'_' + privateProperties[privateId];
+    }
+
+    function transformPrivateProperty(node) {
+        let privateId = node.getText().replace("#", "_");
+        if (!privateProperties.hasOwnProperty(privateId)) {
+            privateProperties[privateId] = 0;
+        } else {
+            privateProperties[privateId]++;
+        }
+        let privateName = getPrivatePropertyName(privateId);
+        textToPaste = (node.parent.initializer) ? "\"__#\" = " + privateName + ".set(this, " + node.parent.initializer.getText() + ");" : "\"__#\" = " + privateName + ".set(this, void 0);";
+        commentOutNode(node.parent, textToPaste);
+        textToPaste = privateName + " = new WeakMap();";
+        edits.push({pos: node.parent.parent.end, end: node.parent.parent.end, order: 4, afterEnd: textToPaste});
+    }
+
+    function getPrivateProperty(node) {
+        let privateId = node.getText().replace("#", "_");
+        let privateName = getPrivatePropertyName(privateId);
+        let wrapperFunc = '__classPrivateFieldGet';
+        textToPaste = '';
+        if (ts.isBinaryExpression(node.parent.parent) &&
+            node.parent.parent.operatorToken.getText() == "=" &&
+            node.parent.parent.left &&
+            node.parent.parent.left.pos == node.parent.pos &&
+            node.parent.parent.left.end == node.parent.end
+        ) {
+            wrapperFunc = '__classPrivateFieldSet';
+            textToPaste = wrapperFunc + "(" + node.parent.expression.getText() + ", " + privateName +", " + node.parent.parent.right.getText() + ")";
+            commentOutNode(node.parent.parent, textToPaste);
+        } else {
+            var tempVar, chain = '';
+            if (node.parent.expression.getText() !== "this" && ((ts.isCallExpression(node.parent.parent)) && node.parent.parent.expression.pos == node.parent.pos ||
+                ts.isTaggedTemplateExpression(node.parent.parent)) )  {
+                let pos = calculatePosForTempVars(node.parent.parent);
+                tempVar = createTempVar(pos);
+                chain = tempVar + ' = ';
+            }
+
+            textToPaste = wrapExpr(node,wrapperFunc + "(" + chain + node.parent.expression.getText() + ", " + privateName + ")", tempVar);
+            commentOutNode(node.parent, textToPaste);
+        }
+
+        function wrapExpr(node, expr, tempVar) {
+            if (!tempVar)
+                tempVar = 'this';
+            if (ts.isNewExpression(node.parent.parent)) {
+                return '(' + expr + ')';
+            }
+            if (ts.isCallExpression(node.parent.parent) && node.parent.parent.expression.pos == node.parent.pos) {
+                edits.push({
+                    pos: node.parent.parent.arguments.pos,
+                    end: node.parent.parent.arguments.pos,
+                    afterEnd: (node.parent.parent.arguments.length > 0)? tempVar + ", ": tempVar
+                });
+                return expr + '.call';
+            }
+            if (ts.isTaggedTemplateExpression(node.parent.parent)) {
+                return expr + '.bind(' + tempVar + ') ';
+            }
+            return expr;
         }
     }
 
@@ -1869,6 +1943,27 @@ function deTypescript(fileNames, options, code) {
             afterEnd: textToPaste
         });
     }
+    if (Object.keys(privateProperties).length !== 0 && privateProperties.constructor === Object) {
+        textToPaste= 'var ';
+        for (var prop in privateProperties) {
+            if (privateProperties.hasOwnProperty(prop)) {
+                textToPaste += prop + ', ';
+                if (privateProperties[prop] > 0) {
+                    for (let i = 1; i <= privateProperties[prop]; i++) {
+                        textToPaste += prop + '_'+ i + ', ';
+                    }
+                }
+            }
+        }
+        textToPaste = textToPaste.slice(0, -2) + ';';
+        edits.push({
+            pos: startPos,
+            end: startPos,
+            afterEnd: textToPaste,
+            order: 3
+        });
+    }
+
     return {edits: edits, diagnostics: syntacticErrors};
 }
 

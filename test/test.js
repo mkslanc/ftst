@@ -1,3 +1,4 @@
+require('colors');
 var fs = require("fs");
 var mocha = require('mocha');
 var ts = require("typescript");
@@ -37,7 +38,7 @@ mocha.describe('Tests running on TS test cases comparing transpiling diffs: ', f
             suppressExcessPropertyErrors: true,
             module: ts.ModuleKind.CommonJS,
             removeComments: false,
-            target: ts.ScriptTarget.ESNext,
+            target: ts.ScriptTarget.ES2020,
             noEmitHelpers: true,
             preserveConstEnums: true,
             noImplicitUseStrict: true
@@ -67,6 +68,17 @@ mocha.describe('Tests running on TS test cases comparing transpiling diffs: ', f
                 tsAllTime += process.hrtime.bigint() - tsTime;
 
                 let equals = utilities.equalResults(myResult.outputText, tsResult.outputText);
+                if (equals && Array.isArray(equals)) {
+                    equals.forEach(function(part){
+                        // green for additions, red for deletions
+                        // grey for common parts
+                        var color = part.added ? 'green' :
+                            part.removed ? 'red' : 'grey';
+                        process.stderr.write(part.value[color]);
+                    });
+
+                    console.log();
+                }
                 assert.ok(!(equals && Array.isArray(equals)));
             });
         }

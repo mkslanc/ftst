@@ -61,6 +61,9 @@ exports.blackList =
         "compiler/varBlock.ts",
         "compiler/collisionExportsRequireAndAmbientClass.ts/collisionExportsRequireAndAmbientClass_externalmodule.ts",
         //differences with constructor transformation
+        "conformance/classes/members/privateNames/privateNameNestedClassNameConflict.ts",
+        "conformance/classes/members/privateNames/privateNameBadSuper.ts",
+        "conformance/classes/members/privateNames/privateNameBadSuperUseDefineForClassFields.ts",
         "conformance/es6/Symbols/symbolProperty6.ts",
         "conformance/parser/ecmascript5/Symbols/parserES5SymbolProperty6.ts",
         "conformance/classes/members/privateNames/privateNameAndIndexSignature.ts",
@@ -222,6 +225,8 @@ exports.blackList =
         "compiler/internalImportUnInstantiatedModuleMergedWithClassNotReferencingInstanceNoConflict.ts",
         "compiler/moduleCrashBug1.ts",
         //no diffs
+        "conformance/classes/members/privateNames/privateNamesIncompatibleModifiers.ts",
+        "conformance/classes/members/privateNames/privateNameUnused.ts",
         "conformance/types/typeRelationships/comparable/optionalProperties02.ts",
         "compiler/arrowFunctionWithObjectLiteralBody2.ts",
         "compiler/arrowFunctionWithObjectLiteralBody4.ts",
@@ -407,5 +412,15 @@ exports.blackList =
         "compiler/binderBinaryExpressionStress.ts",
         "compiler/noCrashOnMixin.ts",
         //rare case when diff regexp working wrong
-        "unittests/matchFiles.ts"
+        "unittests/matchFiles.ts",
+        //Vars outside scope
+        "compiler/privateNameWeakMapCollision.ts",
+        "conformance/classes/members/privateNames/privateNameNestedClassFieldShadowing.ts",
+        "conformance/classes/members/privateNames/privateNamesInNestedClasses-1.ts",
+        "conformance/classes/members/privateNames/privateNameFieldCallExpression.ts",
+        //TS2300
+        "conformance/classes/members/privateNames/privateNameDuplicateField.ts",
+        //TS2729
+        "conformance/classes/members/privateNames/privateNamesUseBeforeDef.ts",
+
     ];

@@ -76,6 +76,7 @@ var equalResults = exports.equalResults = function (myCode, tsCode) {
         myCode = prettier.format(myCode, {semi: false, parser: "babel"});
 
         //TODO: experimental!
+        myCode = myCode.replace(/"__#"\s*=/gm, "");
         myCode = myCode.replace(/constructor\s*\((?:[\w\s,]*)?\)\s*{/gm, "");
         tsCode = tsCode.replace(/constructor\s*\((?:[\w\s,]*)?\)\s*{/gm, "");
         myCode = myCode.replace(/(\(\s*)?this(\s*\))?(?:[.]|\[(.*?)\])/gm, "$1$2$3");
