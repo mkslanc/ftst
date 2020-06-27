@@ -37,7 +37,7 @@ result = { outputText: outputText, diagnostics: diagnostics}
 
 ### Example: 
 ```js
-var ftst = require("ftst");
+var ftst = require("ftst/transpiler");
 var options = {
     compilerOptions: {
         newLine: "lf",
