@@ -23,14 +23,16 @@ function print(result) {
 
     result.diffSet.forEach(function (dif) {
         if (dif.state != "equal") {
-            console.log('Difference - name1: %s, type1: %s, name2: %s, type2: %s, state: %s',
-                path.normalize(dif.path1 + '/' + dif.name1), dif.type1, dif.name2, dif.type2, dif.state);
-            if (dif.name2 && dif.name1 == undefined && dif.type2 != "directory") {
-                let curPath = path.normalize(projectPath + dif.path2 + '\\' + dif.name2);
-                exec('start chrome ' + curPath, function (err) {
-                    if (err) { //process error
-                    }
-                })
+            if (dif.type1 != "directory" && dif.type2 != "directory") {
+                console.log('Difference - name1: %s, type1: %s, name2: %s, type2: %s, state: %s',
+                    path.normalize(dif.path1 + '/' + dif.name1), dif.type1, dif.name2, dif.type2, dif.state);
+                if (dif.name2 && dif.name1 == undefined) {
+                    let curPath = path.normalize(projectPath + dif.path2 + '\\' + dif.name2);
+                    exec('start chrome ' + curPath, function (err) {
+                        if (err) { //process error
+                        }
+                    })
+                }
             }
         }
     })

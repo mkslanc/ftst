@@ -4,11 +4,11 @@ var mocha = require('mocha');
 var ts = require("typescript");
 var transpiler = require("../transpiler");
 var assert = require('assert');
-var blacklist = require('../blacklist').blackList;
-var utilities = require("../utilities-diff");
-utilities.updateBlackListPath("./typescript_tests/tests/cases", blacklist);
+var blacklist = require('./blacklist').blackList;
+var utilities = require("./utilities-diff");
+utilities.updateBlackListPath("./typescript_tests/tests", blacklist);
 var tests = [];
-add("./typescript_tests/tests/cases");
+add("./typescript_tests/tests");
 
 function add(path) {
     try {

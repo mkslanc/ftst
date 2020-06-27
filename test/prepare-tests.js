@@ -13,7 +13,7 @@ function add(path) {
         var transpileCode = typescriptFile.split(/\/\/\s*@filename: ([^\s]+).*/gmi);
         if (transpileCode.length > 1) {
             transpileCode.shift();
-            let tsFileDir = 'typescript_tests/' + path + '/';
+            let tsFileDir = './typescript_tests/' + path + '/';
             if (!fs.existsSync(tsFileDir)) {
                 fs.mkdirSync(tsFileDir, {recursive: true});
             }
@@ -26,11 +26,11 @@ function add(path) {
                 fs.writeFileSync(tsFileDir + transpileCode[i - 1].replace(/[:\\]/g,"_"), transpileCode[i]);
             }
         } else {
-            let dirName = 'typescript_tests/' + path.split('/').slice(0, -1).join('/');
+            let dirName = './typescript_tests/' + path.split('/').slice(0, -1).join('/');
             if (!fs.existsSync(dirName)) {
                 fs.mkdirSync(dirName, {recursive: true});
             }
-            fs.writeFileSync('typescript_tests/' + path, transpileCode[0]);
+            fs.writeFileSync('./typescript_tests/' + path, transpileCode[0]);
         }
     } else if (stat.isDirectory()) {
         var files = fs.readdirSync(path).sort();

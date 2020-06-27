@@ -1,4 +1,4 @@
-var ftst = require("./transpiler");
+var ftst = require("../transpiler");
 //Example from TypeScript Handbook
 var options = {
     compilerOptions: {

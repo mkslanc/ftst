@@ -37,7 +37,7 @@ result = { outputText: outputText, diagnostics: diagnostics}
 
 ### Example: 
 ```js
-var ftst = require("./transpiler");
+var ftst = require("ftst");
 var options = {
     compilerOptions: {
         newLine: "lf",
@@ -70,10 +70,8 @@ Since the goal is to keep generated javascript readable, only **Es2019**, **Es20
 You need to make some preparations for using tests: 
 1. Download latest version of ts sources from https://github.com/microsoft/TypeScript
 2. Create directory for typescripts tests, for example `tests`, and copy content of `tests\cases` from ts sources to created dir
-3. Use `prepare-tests.js` from CLI: `node prepare-tests.js tests`
+3. Use `prepare-tests.js` from CLI: `node test/prepare-tests.js ./tests`
 4. Now your ready to use tests.
-
-P.S.: you can use bash script `first-run.sh` to prepare tests and generate `ts` and `ftst` output files. 
 
 For main tests: 
 ```bash

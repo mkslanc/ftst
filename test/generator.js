@@ -1,4 +1,4 @@
-var transpiler = require("./transpiler");
+var transpiler = require("../transpiler");
 var fs = require("fs");
 
 function generateJavaScriptFile(path, options) {
