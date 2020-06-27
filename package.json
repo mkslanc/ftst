@@ -14,5 +14,9 @@
     "diff": "^4.0.2",
     "colors": "^1.4.0",
     "dir-compare": "^2.2.0"
+  },
+  "repository": {
+    "type" : "git",
+    "url" : "https://github.com/mkslanc/ftst.git"
   }
 }
