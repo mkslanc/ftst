@@ -10,10 +10,10 @@ function generateJavaScriptFile(path, options) {
         } catch (e) {
             return;
         }
-        if (stat.isFile() && /([^d]|[^.]d)\.ts$/.test(path) && !/binderBinaryExpressionStress/.test(path)) {
+        if (stat.isFile() && /([^d]|[^.]d)\.tsx?$/.test(path) && !/binderBinaryExpressionStress/.test(path)) {
             var fileArr = [];
             fileArr.push(path);
-            var filename = path.replace(/.ts$/, "Js.js");
+            var filename = path.replace(/.tsx?$/, "Js.js");
             fs.copyFileSync(path, filename);
             applyEditsToFile(filename);
         } else if (stat.isDirectory()) {
@@ -44,7 +44,8 @@ if (process.argv.length > 2) {
             noLib: true,
             noResolve: true,
             isolatedModules: true,
-            suppressOutputPathCheck: true
+            suppressOutputPathCheck: true,
+            jsx: "react"
         }
     });
 }

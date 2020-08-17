@@ -224,6 +224,50 @@ function deTypescript(fileNames, options, code) {
             case (ts.isTypeReferenceNode(node)):
                 return;
         }
+        if (options.jsx && options.jsx == "react") {
+            switch (true) {
+                case (ts.isJsxSelfClosingElement(node)):
+                    let hasAttribites = node.attributes && node.attributes.properties && node.attributes.properties.length > 0;
+                    textToPaste = hasAttribites && !hasSpreadAttribute(node) ? "})": ")";
+                    textToPaste+= hasSpreadAttribute(node) ? ")": "";
+                    textToPaste+= (node.parent.children && node.parent.children.length > 0) ? ", " : ""
+                    edits.push({
+                        pos: hasAttribites ? node.attributes.properties.end : node.end - 2,
+                        end: hasAttribites ? node.end : node.end,
+                        afterEnd: textToPaste
+                    });
+                case (ts.isJsxOpeningFragment(node)):
+                case (ts.isJsxOpeningElement(node)):
+                    transformJsxOpeningElement(node);
+                    break;
+                case (ts.isJsxAttribute(node)):
+                    transformJsxAttribute(node);
+                    break;
+                case (ts.isJsxSpreadAttribute(node)):
+                    transformJsxSpreadAttribute(node);
+                    break;
+                case (ts.isJsxClosingElement(node)):
+                case (ts.isJsxClosingFragment(node)):
+                    textToPaste = (node.parent.parent.children && node.parent.parent.children.length > 0) ? "), " : ")"
+                    commentOutNode(node,textToPaste);
+                    break;
+                case (ts.isJsxText(node)):
+                    if (!node.containsOnlyTriviaWhiteSpaces)
+                        commentOutNode(node,'"'+node.text+'"');
+                    break;
+                case (ts.isJsxExpression(node)):
+                    edits.push({
+                        pos: node.pos + node.getLeadingTriviaWidth(),
+                        end: node.pos + node.getLeadingTriviaWidth() + 1
+                    });
+                    edits.push({
+                        pos: node.end - 1,
+                        end: node.end
+                    });
+                    break;
+            }
+        }
+
         if (options.target <= ts.ScriptTarget.ES2019) {
             if (ts.isOptionalChain(node)) {
                 transformOptionalChaining(node);
@@ -236,6 +280,117 @@ function deTypescript(fileNames, options, code) {
         }
         commentOutTypes(node);
         ts.forEachChild(node, visit);
+    }
+
+    function hasSpreadAttribute(node) {
+        if (node.attributes && node.attributes.properties && node.attributes.properties.length > 0) {
+            return node.attributes.properties.some(function (el) {
+                if (ts.isJsxSpreadAttribute(el)) {
+                    return true
+                }
+            });
+        }
+    }
+
+    function transformJsxSpreadAttribute(node) {
+        if (node.parent.properties.length == 1) {
+            edits.push({
+                pos: node.parent.properties.pos-1,
+                end: node.end,
+                afterEnd: "Object.assign({}, "+node.getText()
+            });
+        } else {
+            edits.push({
+                pos: node.parent.properties.pos,
+                end: node.parent.properties.pos,
+                afterEnd: "Object.assign(",
+                order: 0
+            });
+
+        }
+        commentOutNode(node, "}, " + node.expression.getText());
+
+    }
+
+    function transformJsxAttribute(node) {
+        if (node.initializer) {
+            edits.push({
+                pos: node.name.end,
+                end: node.initializer.pos + node.initializer.getLeadingTriviaWidth(),
+                afterEnd: ": "
+            });
+                edits.push({
+                    pos: node.initializer.end,
+                    end: node.initializer.end,
+                    afterEnd: ", "
+                });
+        } else {
+            edits.push({
+                pos: node.name.end,
+                end: node.name.end,
+                afterEnd: ": true,"
+            });
+        }
+    }
+
+    function transformJsxOpeningElement(node) {
+        let reactImport = findReferencedTransformByModule("React", "React");
+        if (!reactImport) {
+            reactImport = findReferencedTransformByModule("global", "React");
+            if (reactImport)
+                reactImport.used = true;
+        } else {
+            reactImport.used = true;
+        }
+        var tagName;
+        if (node.tagName) {
+            let symbol = checker.getSymbolAtLocation(node.tagName);
+            if (symbol) {
+                let referenceName = getReferencedIdentifier(node.tagName);
+                if (referenceName.text != "") {
+                    tagName = referenceName.text + node.tagName.getText();
+                } else {
+                    tagName = (/^__/.test(node.tagName.getText()))? node.tagName.getText() : `${node.tagName.getText()}`;
+                }
+            } else {
+                tagName = (/^__/.test(node.tagName.getText()))? node.tagName.getText() : `"${node.tagName.getText()}"`;
+            }
+        } else {
+            if (ts.isJsxOpeningFragment(node)) {
+                tagName = "React.Fragment";
+            }
+        }
+
+        if (node.attributes && node.attributes.properties && node.attributes.properties.length > 0) {
+            textToPaste = `React.createElement(${tagName}, `
+            edits.push({
+                pos: node.attributes.properties.pos,
+                end: node.attributes.properties.pos,
+                afterEnd: "{",
+                order: 1
+            });
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                end: node.attributes.properties.pos,
+                afterEnd: textToPaste
+            });
+            let hasAttribites = node.attributes && node.attributes.properties && node.attributes.properties.length > 0;
+            textToPaste = hasAttribites && !hasSpreadAttribute(node) ? "}": ")";
+            //textToPaste+= hasSpreadAttribute(node) ? ")": "";
+            textToPaste+= (node.parent.children && node.parent.children.length > 0) ? ", " : ""
+            edits.push({
+                pos: node.end - 1,
+                end: node.end,
+                afterEnd: textToPaste
+            });
+        } else {
+            textToPaste = `React.createElement(${tagName}, null${(node.parent.children && node.parent.children.length > 0) ? ", ": ""}`
+            edits.push({
+                pos: node.pos + node.getLeadingTriviaWidth(),
+                end: node.end,
+                afterEnd: textToPaste
+            });
+        }
     }
 
     function transformNullishCoalesce(node) {
@@ -1986,7 +2141,7 @@ var transpileModule = function (code, options, remove) {
     options.compilerOptions.noResolve = true;
     options.compilerOptions.isolatedModules = true;
     options.compilerOptions.noLib = true;
-    let edits = deTypescript(['transpile-dummy.ts'], options.compilerOptions, code);
+    let edits = deTypescript(['transpile-dummy.tsx'], options.compilerOptions, code);
     return {outputText: applyEdits(code, remove, edits.edits), diagnostics: edits.diagnostics};
 };
 

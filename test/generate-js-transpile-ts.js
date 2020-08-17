@@ -11,7 +11,7 @@ function generateJavaScriptFile(path, options) {
         } catch (e) {
             return;
         }
-        if (stat.isFile() && /([^d]|[^.]d)\.ts$/.test(path) && !/(binderBinaryExpressionStress|noCrashOnMixin)/.test(path)) {
+        if (stat.isFile() && /([^d]|[^.]d)\.tsx?$/.test(path) && !/(binderBinaryExpressionStress|noCrashOnMixin)/.test(path)) {
             console.log(path + "\r\n");
             var fileArr = [];
             fileArr.push(path);
@@ -20,7 +20,7 @@ function generateJavaScriptFile(path, options) {
             let source = typescriptFile;
             if (transpileCode.diagnostics.length === 0)
                 source = transpileCode.outputText;
-            var filenameNew = path.replace(/.ts$/, "Ts.js");
+            var filenameNew = path.replace(/.tsx?$/, "Ts.js");
             fs.writeFileSync(filenameNew, source);
         } else if (stat.isDirectory()) {
             var files = fs.readdirSync(path).sort();
@@ -42,7 +42,8 @@ function compileTypescript(code, fileName) {
             target: ts.ScriptTarget.ES2020,
             noEmitHelpers: true,
             preserveConstEnums: true,
-            noImplicitUseStrict: true
+            noImplicitUseStrict: true,
+            jsx: "react"
         },
         fileName: fileName,
         reportDiagnostics: true

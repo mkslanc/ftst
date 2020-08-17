@@ -5,7 +5,7 @@ function add(path) {
     } catch (e) {
         return;
     }
-    if (stat.isFile() && /\.ts$/.test(path)) {
+    if (stat.isFile() && /\.tsx?$/.test(path)) {
         console.log(path + "\r\n");
         var fileArr = [];
         fileArr.push(path);
