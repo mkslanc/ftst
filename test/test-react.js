@@ -42,7 +42,7 @@ mocha.describe('Tests running on TSX test cases comparing transpiling diffs: ', 
             noEmitHelpers: true,
             preserveConstEnums: true,
             noImplicitUseStrict: true,
-            jsx: "react"
+            jsx: ts.ScriptKind.JSX
         },
         fileName: 'transpile-dummy.tsx',
         reportDiagnostics: true

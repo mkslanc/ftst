@@ -45,7 +45,7 @@ if (process.argv.length > 2) {
             noResolve: true,
             isolatedModules: true,
             suppressOutputPathCheck: true,
-            jsx: "react"
+            jsx: transpiler.ScriptKind.JSX
         }
     });
 }
