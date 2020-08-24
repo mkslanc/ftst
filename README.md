@@ -81,3 +81,8 @@ For Es2019 tests:
 ```bash
 npm test test/test-es2019.js
 ```
+
+For TSX tests: 
+```bash
+npm test test/test-tsx.js
+```
