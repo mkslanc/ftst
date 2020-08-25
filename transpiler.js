@@ -224,17 +224,21 @@ function deTypescript(fileNames, options, code) {
             case (ts.isTypeReferenceNode(node)):
                 return;
         }
+
         if (options.jsx && options.jsx == ts.ScriptKind.JSX) {
             transformJSX(node);
+        }
+
+        if (options.transformNullishCoalesce || options.target <= ts.ScriptTarget.ES2019) {
+            if (ts.isNullishCoalesce(node)) {
+                transformNullishCoalesce(node);
+                return;
+            }
         }
 
         if (options.target <= ts.ScriptTarget.ES2019) {
             if (ts.isOptionalChain(node)) {
                 transformOptionalChaining(node);
-                return;
-            }
-            if (ts.isNullishCoalesce(node)) {
-                transformNullishCoalesce(node);
                 return;
             }
         }
@@ -426,7 +430,7 @@ function deTypescript(fileNames, options, code) {
         }
     }
 
-    function transformNullishCoalesce(node) {
+    function transformNullishCoalesce(node, arr = edits) {
         let tempNode = node;
         textToPaste = '';
         var tempVars = [], leftPart = [], rightPart = [];
@@ -441,7 +445,7 @@ function deTypescript(fileNames, options, code) {
                 var tempVar = serveExpressions(left);
                 var expr = "(";
             }
-            if (ts.isOptionalChain(tempNode.right)) {
+            if (ts.isOptionalChain(tempNode.right) && !options.transformNullishCoalesce) {
                 let optChain = transformOptionalChaining(tempNode.right, false);
                 tempVars.push(tempVar);
                 leftPart.unshift("(" + tempVar + " = ");
@@ -454,18 +458,18 @@ function deTypescript(fileNames, options, code) {
             tempNode = tempNode.left;
         } while (ts.isNullishCoalesce(tempNode));
 
-        leftPart[leftPart.length - 1] += (ts.isOptionalChain(tempNode)) ?
+        leftPart[leftPart.length - 1] += (ts.isOptionalChain(tempNode) && !options.transformNullishCoalesce) ?
             transformOptionalChaining(tempNode, false) :
             serveExpressions(tempNode);
         textToPaste = leftPart.join('') + rightPart.join('');
         textToPaste = combineNullishCoalesceExpression();
         textToPaste = wrapExpression(textToPaste, node);
-        edits.push({
+        arr.push({
             pos: node.pos + node.getLeadingTriviaWidth(),
             end: node.right.pos,
             afterEnd: textToPaste
         });
-        commentOutNode(node, textToPaste);
+        commentOutNode(node, textToPaste, arr);
 
         function combineNullishCoalesceExpression() {
             var expr = leftPart.join('');
@@ -574,15 +578,15 @@ function deTypescript(fileNames, options, code) {
         return varWrap;
     }
 
-    function commentOutNode(node, textToPaste) {
+    function commentOutNode(node, textToPaste, arr = edits) {
         if (textToPaste) {
-            edits.push({
+            arr.push({
                 pos: node.pos + node.getLeadingTriviaWidth(),
                 end: node.end,
                 afterEnd: textToPaste
             });
         } else {
-            edits.push({
+            arr.push({
                 pos: node.pos + node.getLeadingTriviaWidth(),
                 end: node.end
             });
@@ -1051,6 +1055,8 @@ function deTypescript(fileNames, options, code) {
                 transformReferencedIdentifier(node, localEdits);
             } else if (ts.isNonNullExpression(node)) {
                 commentOutNonNullExpression(node, localEdits);
+            } else if (ts.isNullishCoalesce(node) && (options.transformNullishCoalesce || options.target <= ts.ScriptTarget.ES2019)) {
+                transformNullishCoalesce(node, localEdits);
             }
             commentOutTypes(node, localEdits);
             ts.forEachChild(node, serve);
