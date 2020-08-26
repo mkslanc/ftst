@@ -2171,7 +2171,7 @@ function applyEdits(code, remove, edits) {
                     depth++;
                 }
                 let symb = (/\r\n/.test(piece)) ? "\r\n" : "\n";
-                end = symb.repeat(depth) + afterEnd + start.slice(edit.end) + end;
+                end = afterEnd + symb.repeat(depth) + start.slice(edit.end) + end;
             } else {
                 end = "/*" + start.slice(edit.pos, edit.end).replace(/\*\//g, "  ") + "*/" + afterEnd + start.slice(edit.end) + end;
             }
