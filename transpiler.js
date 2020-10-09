@@ -74,6 +74,7 @@ function deTypescript(fileNames, options, code) {
     var allExports = [];
     var namingCounter = 10;
     var tempVarPos;
+    var helpers = {};
     let syntacticErrors = program.getSyntacticDiagnostics();
     if (syntacticErrors.length === 0) {
         let sources = program.getSourceFiles();
@@ -631,6 +632,9 @@ function deTypescript(fileNames, options, code) {
             if (hasParametersDecorators(node) && !node.parent.decorators) {
                 classLet(node);
                 var className = getClassName(node.parent, true);
+                if (!options.noEmitHelpers) {
+                    helpers["decorate"] = true;
+                }
                 var decorators = ";" + className.constructionName + "= __decorate([";
                 decorators += commentOutParametersDecorators(node);
                 decorators = decorators.slice(0, -1) + "], " + className.constructionName + ");";
@@ -648,6 +652,9 @@ function deTypescript(fileNames, options, code) {
                 end: node.decorators.end,
                 afterEnd: afterEnd
             });
+            if (!options.noEmitHelpers) {
+                helpers["decorate"] = true;
+            }
             var decorators = ";" + className.constructionName + "= __decorate([";
             let decoratorsLength = node.decorators.length;
             for (var i = 0; i < decoratorsLength; i++) {
@@ -698,6 +705,9 @@ function deTypescript(fileNames, options, code) {
             } else {
                 if (node.moduleSpecifier && !node.exportClause && !isInsideModule(node)) {
                     exportWrapperExists = true;
+                    if (!options.noEmitHelpers) {
+                        helpers["exportStar"] = true;
+                    }
                     textToPaste = '__exportStar(require(' + node.moduleSpecifier.getText() + "), exports);";
                 } else {
                     textToPaste = '';
@@ -944,6 +954,9 @@ function deTypescript(fileNames, options, code) {
         if (node.decorators && node.decorators.length) {
             edits.push({pos: node.decorators.pos, end: node.decorators.end});
             if (!ts.isPrivateIdentifier(node.name)) {
+                if (!options.noEmitHelpers) {
+                    helpers["decorate"] = true;
+                }
                 var decorators = ";__decorate([";
                 let decoratorsLength = node.decorators.length;
                 for (var i = 0; i < decoratorsLength; i++) {
@@ -961,6 +974,9 @@ function deTypescript(fileNames, options, code) {
             }
         } else {
             if (hasParametersDecorators(node)) {
+                if (!options.noEmitHelpers) {
+                    helpers["decorate"] = true;
+                }
                 var decorators = ";__decorate([";
                 decorators += commentOutParametersDecorators(node);
                 decorators = decorators.slice(0, -1) + "], " + className + ".prototype, \"" + constructionName + "\", null);";
@@ -990,6 +1006,9 @@ function deTypescript(fileNames, options, code) {
     function getPrivateProperty(node) {
         let privateId = node.getText().replace("#", "_");
         let privateName = getPrivatePropertyName(privateId);
+        if (!options.noEmitHelpers) {
+            helpers["classPrivateFieldGet"] = true;
+        }
         let wrapperFunc = '__classPrivateFieldGet';
         textToPaste = '';
         if (ts.isBinaryExpression(node.parent.parent) &&
@@ -1531,6 +1550,9 @@ function deTypescript(fileNames, options, code) {
         for (var i = 0; i < parametersLength; i++) {
             if (node.parameters[i].decorators && node.parameters[i].decorators.length) {
                 let decoratorsLength = node.parameters[i].decorators.length;
+                if (!options.noEmitHelpers) {
+                    helpers["param"] = true;
+                }
                 for (var j = 0; j < decoratorsLength; j++) {
                     commentOutNode(node.parameters[i].decorators[j]);
                     let paramNum = (thisParam && thisParam.pos < node.parameters[i].pos) ? i - 1 : i;
@@ -2116,6 +2138,37 @@ function deTypescript(fileNames, options, code) {
             afterEnd: textToPaste,
             order: 3
         });
+    }
+
+    if (Object.keys(helpers).length !== 0) {
+        for (let key of Object.keys(helpers)) {
+            switch (key) {
+                case "exportStar":
+                    edits.push({
+                        pos: startPos,
+                        end: startPos,
+                        afterEnd: "var __createBinding = (this && __createBinding) || (Object.create ? function (o, m, k, k2) { if (k2 === undefined) k2 = k; Object.defineProperty(o, k2, { enumerable: true, get: function () { return m[k] },  }) } : function (o, m, k, k2) { if (k2 === undefined) k2 = k; o[k2] = m[k] }); var __exportStar =  (this && __exportStar) ||  function (m, exports) { for (var p in m) if (p !== \"default\" && !exports.hasOwnProperty(p)) __createBinding(exports, m, p)  };",
+                        order: 5
+                    })
+                    break;
+                case "decorate":
+                    edits.push({
+                        pos: startPos,
+                        end: startPos,
+                        afterEnd: "var __decorate =  (this && __decorate) ||  function (decorators, target, key, desc) {    var c = arguments.length,      r =        c < 3          ? target          : desc === null          ? (desc = Object.getOwnPropertyDescriptor(target, key))          : desc,      d;    if (typeof Reflect === \"object\" && typeof Reflect.decorate === \"function\")      r = Reflect.decorate(decorators, target, key, desc);    else      for (var i = decorators.length - 1; i >= 0; i--)        if ((d = decorators[i]))          r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;    return c > 3 && r && Object.defineProperty(target, key, r), r  };",
+                        order: 5
+                    })
+                    break;
+                case "param":
+                    edits.push({
+                        pos: startPos,
+                        end: startPos,
+                        afterEnd: "var __param =  (this && __param) ||  function (paramIndex, decorator) {    return function (target, key) {      decorator(target, key, paramIndex)    }  };",
+                        order: 4
+                    })
+                    break;
+            }
+        }
     }
 
     return {edits: edits, diagnostics: syntacticErrors};
