@@ -32,6 +32,7 @@ function getBaseFileName(path, extensions, ignoreCase) {
 function normalizeSlashes(path) {
     return path.replace(backslashRegExp, directorySeparator);
 }
+exports.normalizeSlashes = normalizeSlashes;
 
 function getRootLength(path) {
     const rootLength = getEncodedRootLength(path);

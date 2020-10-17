@@ -69,7 +69,7 @@ function deTypescript(fileNames, options, code) {
     var modulesIdentifiers = {};
     var privateProperties = {};
     var textToPaste;
-    var fileNameRegExp = new RegExp(fileNames[0]);
+    var normalizedfileName = utilities.normalizeSlashes(fileNames[0]);
     var startPos = 0;
     var allExports = [];
     var namingCounter = 10;
@@ -80,7 +80,7 @@ function deTypescript(fileNames, options, code) {
         let sources = program.getSourceFiles();
         for (var _i = 0, _a = sources; _i < _a.length; _i++) {
             var sourceFile = _a[_i];
-            if (!sourceFile.isDeclarationFile && fileNameRegExp.test(sourceFile.fileName)) {
+            if (!sourceFile.isDeclarationFile && sourceFile.fileName == normalizedfileName) {
                 if (sourceFile.statements.length > 0) {
                     if (ts.isExpressionStatement(sourceFile.statements[0]) && sourceFile.statements[0].expression.text == "use strict") {
                         startPos = sourceFile.statements[0].end;
@@ -2250,7 +2250,8 @@ var transpileModule = function (code, options, remove) {
     options.compilerOptions.noResolve = true;
     options.compilerOptions.isolatedModules = true;
     options.compilerOptions.noLib = true;
-    let edits = deTypescript(['transpile-dummy.tsx'], options.compilerOptions, code);
+    let filename = (options.fileName) ? [options.fileName] : ['transpile-dummy.tsx'];
+    let edits = deTypescript(filename, options.compilerOptions, code);
     return {outputText: applyEdits(code, remove, edits.edits), diagnostics: edits.diagnostics};
 };
 
