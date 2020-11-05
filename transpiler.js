@@ -370,9 +370,9 @@ function deTypescript(fileNames, options, code) {
                 transformJSX(node.initializer.expression);
         } else {
             edits.push({
-                pos: node.name.end,
+                pos: node.name.pos + node.name.getLeadingTriviaWidth(),
                 end: node.name.end,
-                afterEnd: ": true,",
+                afterEnd: node.name.text + ": true,",
                 order: 2
             });
         }
@@ -436,16 +436,11 @@ function deTypescript(fileNames, options, code) {
         textToPaste = '';
         var tempVars = [], leftPart = [], rightPart = [];
         do {
-            let left = (ts.isNullishCoalesce(tempNode.left)) ? tempNode.left.right : tempNode.left;
+            //let left = (ts.isNullishCoalesce(tempNode.left)) ? tempNode.left.right : tempNode.left;
             let right = serveExpressions(tempNode.right);
-            if (!ts.isIdentifier(left)) {
-                let pos = calculatePosForTempVars(node);
-                var tempVar = createTempVar(pos);
-                var expr = "(" + tempVar + " = ";
-            } else {
-                var tempVar = serveExpressions(left);
-                var expr = "(";
-            }
+            let pos = calculatePosForTempVars(node);
+            var tempVar = createTempVar(pos);
+            var expr = "(" + tempVar + " = ";
             if (ts.isOptionalChain(tempNode.right) && !options.transformNullishCoalesce) {
                 let optChain = transformOptionalChaining(tempNode.right, false);
                 tempVars.push(tempVar);
